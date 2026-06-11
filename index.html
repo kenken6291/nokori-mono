@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>nokori-mono｜冷蔵庫の残り物からレシピ提案</title>
+<meta name="description" content="冷蔵庫の残り物食材を3つ選ぶだけで、定番料理のレシピを提案するアプリ">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FFF7EA;        /* 台所のあかり */
+    --ink:#3E2F25;          /* 鉄鍋ブラウン */
+    --ink-soft:#8C7763;
+    --board:#E9C98F;        /* まな板の木 */
+    --board-deep:#C99F5F;
+    --negi:#5C8A4E;         /* ねぎグリーン */
+    --negi-deep:#3F6B36;
+    --tamago:#F5B82E;       /* 卵焼きイエロー */
+    --tamago-deep:#D99A12;
+    --meat-tint:#FBE3DA;
+    --meat-line:#E4A28E;
+    --veg-tint:#E4EFD6;
+    --veg-line:#A8C48C;
+    --etc-tint:#FBEFD2;
+    --etc-line:#DFC183;
+    --card:#FFFFFF;
+    --shadow:0 2px 0 rgba(62,47,37,.14);
+    --radius:18px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Yu Gothic",sans-serif;
+    background:
+      radial-gradient(circle at 12% 8%, rgba(245,184,46,.10), transparent 32%),
+      radial-gradient(circle at 88% 90%, rgba(92,138,78,.08), transparent 36%),
+      var(--paper);
+    color:var(--ink);
+    min-height:100dvh;
+    font-weight:500;
+    line-height:1.6;
+  }
+  .wrap{max-width:560px;margin:0 auto;padding:20px 16px 170px}
+
+  /* ===== ヘッダー ===== */
+  header{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .logo-mark{flex:none;width:54px;height:54px}
+  h1{font-size:1.55rem;font-weight:900;letter-spacing:.04em;line-height:1.2}
+  h1 small{display:block;font-size:.68rem;font-weight:700;color:var(--negi-deep);letter-spacing:.18em;margin-top:2px}
+  .lead{font-size:.86rem;color:var(--ink-soft);margin:10px 2px 20px}
+  .lead b{color:var(--ink);background:linear-gradient(transparent 62%, rgba(245,184,46,.55) 62%);font-weight:900}
+
+  /* ===== カテゴリーと食材マグネット ===== */
+  .cat{margin-bottom:22px}
+  .cat-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .cat-head .dot{width:10px;height:10px;border-radius:50%}
+  .cat-head h2{font-size:.95rem;font-weight:900;letter-spacing:.06em}
+  .cat-head .count{margin-left:auto;font-size:.7rem;color:var(--ink-soft)}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  @media (min-width:430px){.grid{grid-template-columns:repeat(4,1fr)}}
+
+  .magnet{
+    appearance:none;border:2px solid;border-radius:16px;
+    padding:10px 4px 8px;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;gap:2px;
+    font-family:inherit;font-weight:700;font-size:.8rem;color:var(--ink);
+    box-shadow:var(--shadow);
+    transition:transform .12s ease, box-shadow .12s ease, opacity .15s ease;
+    min-height:64px;
+  }
+  .magnet .face{font-size:1.35rem;line-height:1}
+  .magnet:active{transform:translateY(2px);box-shadow:none}
+  .magnet[data-cat="meat"]{background:var(--meat-tint);border-color:var(--meat-line)}
+  .magnet[data-cat="veg"]{background:var(--veg-tint);border-color:var(--veg-line)}
+  .magnet[data-cat="etc"]{background:var(--etc-tint);border-color:var(--etc-line)}
+  .magnet[aria-pressed="true"]{
+    background:var(--ink);border-color:var(--ink);color:#FFF;
+    transform:translateY(2px);box-shadow:0 0 0 3px rgba(245,184,46,.85);
+  }
+  .magnet[disabled]{opacity:.38;cursor:not-allowed;transform:none}
+  .magnet:focus-visible{outline:3px solid var(--negi);outline-offset:2px}
+
+  /* ===== まな板トレイ（画面下固定）===== */
+  .tray{
+    position:fixed;left:0;right:0;bottom:0;z-index:50;
+    padding:10px 16px calc(12px + env(safe-area-inset-bottom));
+    background:linear-gradient(180deg, rgba(255,247,234,0) 0%, var(--paper) 26%);
+  }
+  .tray-inner{
+    max-width:560px;margin:0 auto;
+    background:linear-gradient(180deg,var(--board),#DDB272);
+    border:2px solid var(--board-deep);
+    border-radius:22px;padding:10px 12px 12px;
+    box-shadow:0 4px 0 var(--board-deep), 0 10px 24px rgba(62,47,37,.18);
+  }
+  .tray-label{font-size:.66rem;font-weight:900;color:#7A5A2B;letter-spacing:.14em;margin:0 4px 7px}
+  .tray-row{display:flex;gap:8px;align-items:stretch}
+  .slots{display:flex;gap:6px;flex:1;min-width:0}
+  .slot{
+    flex:1;min-width:0;border-radius:12px;min-height:52px;
+    border:2px dashed rgba(122,90,43,.55);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-size:.62rem;color:#8A6A38;font-weight:700;background:rgba(255,255,255,.25);
+  }
+  .slot.filled{
+    border:2px solid var(--ink);background:#FFF;cursor:pointer;
+    font-size:.66rem;color:var(--ink);gap:1px;
+    box-shadow:0 2px 0 rgba(62,47,37,.2);
+  }
+  .slot.filled .face{font-size:1.1rem;line-height:1.1}
+  .slot.filled .x{font-size:.55rem;color:var(--ink-soft)}
+  .slot:focus-visible{outline:3px solid var(--negi);outline-offset:2px}
+  .go{
+    flex:none;appearance:none;border:none;border-radius:14px;
+    background:var(--tamago);color:var(--ink);
+    font-family:inherit;font-weight:900;font-size:.86rem;line-height:1.25;
+    padding:6px 14px;cursor:pointer;letter-spacing:.04em;
+    box-shadow:0 3px 0 var(--tamago-deep);
+    transition:transform .12s ease, box-shadow .12s ease, filter .2s;
+  }
+  .go:active{transform:translateY(3px);box-shadow:none}
+  .go[disabled]{filter:grayscale(.7);opacity:.55;cursor:not-allowed;box-shadow:0 3px 0 #b9a98b}
+  .go:focus-visible{outline:3px solid var(--negi-deep);outline-offset:2px}
+  .tray-inner.shake{animation:shake .35s ease}
+  @keyframes shake{20%{transform:translateX(-5px)}50%{transform:translateX(5px)}80%{transform:translateX(-3px)}}
+
+  /* ===== 結果画面 ===== */
+  .hidden{display:none !important}
+  .back{
+    appearance:none;border:2px solid var(--ink);background:#FFF;color:var(--ink);
+    border-radius:999px;font-family:inherit;font-weight:900;font-size:.82rem;
+    padding:8px 16px;cursor:pointer;box-shadow:var(--shadow);margin-bottom:16px;
+  }
+  .back:active{transform:translateY(2px);box-shadow:none}
+  .picked-line{font-size:.82rem;color:var(--ink-soft);margin-bottom:16px}
+  .picked-line .chip{
+    display:inline-block;background:#FFF;border:1.5px solid var(--ink);border-radius:999px;
+    padding:1px 10px;margin:2px;font-weight:700;color:var(--ink);font-size:.8rem;
+  }
+  .result-title{font-size:1.15rem;font-weight:900;margin-bottom:14px}
+  .result-title em{font-style:normal;color:var(--negi-deep)}
+
+  .recipe{
+    background:var(--card);border:2px solid #EADFCB;border-radius:var(--radius);
+    box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden;
+  }
+  .recipe summary{
+    list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;
+    padding:12px 14px;
+  }
+  .recipe summary::-webkit-details-marker{display:none}
+  .recipe summary:focus-visible{outline:3px solid var(--negi);outline-offset:-3px}
+  .thumb{flex:none;width:74px;height:56px;border-radius:12px;overflow:hidden;background:#FDF3DD;border:1.5px solid #EADFCB}
+  .thumb svg{width:100%;height:100%;display:block}
+  .r-head{min-width:0;flex:1}
+  .r-name{font-size:1rem;font-weight:900;line-height:1.3}
+  .r-meta{display:flex;gap:8px;align-items:center;margin-top:3px;flex-wrap:wrap}
+  .badge{font-size:.64rem;font-weight:900;border-radius:999px;padding:1px 9px}
+  .badge.match{background:var(--negi);color:#FFF}
+  .badge.time{background:#F3E9D6;color:#7A5A2B}
+  .caret{flex:none;color:var(--ink-soft);font-size:.8rem;transition:transform .2s}
+  details[open] .caret{transform:rotate(180deg)}
+
+  .r-body{padding:0 16px 18px;border-top:1.5px dashed #EADFCB}
+  .hero-art{margin:14px auto 4px;max-width:300px}
+  .hero-art svg{width:100%;height:auto;display:block}
+  .sec-label{
+    display:flex;align-items:center;gap:8px;
+    font-size:.78rem;font-weight:900;color:var(--negi-deep);
+    letter-spacing:.1em;margin:16px 0 8px;
+  }
+  .sec-label::after{content:"";flex:1;height:1.5px;background:#EADFCB;border-radius:2px}
+  ul.ing{list-style:none;display:flex;flex-wrap:wrap;gap:6px}
+  ul.ing li{
+    background:#FAF4E6;border:1.5px solid #E6D7B8;border-radius:999px;
+    padding:3px 12px;font-size:.8rem;font-weight:700;
+  }
+  ul.ing li.hit{background:var(--ink);border-color:var(--ink);color:#FFF}
+  ul.ing li.hit::before{content:"✓ ";color:var(--tamago)}
+  .pantry{font-size:.78rem;color:var(--ink-soft);margin-top:8px}
+  ol.steps{list-style:none;counter-reset:st;margin-top:2px}
+  ol.steps li{
+    counter-increment:st;position:relative;padding:0 0 14px 40px;font-size:.88rem;
+  }
+  ol.steps li::before{
+    content:counter(st);position:absolute;left:0;top:0;
+    width:27px;height:27px;border-radius:50%;
+    background:var(--tamago);color:var(--ink);font-weight:900;font-size:.85rem;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 2px 0 var(--tamago-deep);
+  }
+  ol.steps li:not(:last-child)::after{
+    content:"";position:absolute;left:13px;top:29px;bottom:2px;width:2px;
+    background:repeating-linear-gradient(180deg,#E6D7B8 0 4px,transparent 4px 8px);
+  }
+  .empty{
+    background:#FFF;border:2px dashed #DFC183;border-radius:var(--radius);
+    padding:22px 18px;text-align:center;color:var(--ink-soft);font-size:.88rem;
+  }
+  footer{margin-top:28px;text-align:center;font-size:.66rem;color:var(--ink-soft);letter-spacing:.06em}
+
+  .steam{animation:steam 2.6s ease-in-out infinite;transform-origin:center bottom}
+  .steam.s2{animation-delay:.9s}
+  @keyframes steam{0%,100%{opacity:.15;transform:translateY(2px)}50%{opacity:.7;transform:translateY(-3px)}}
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none !important;transition:none !important}
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <!-- ========== 画面1：食材選択 ========== -->
+  <section id="screen-select">
+    <header>
+      <svg class="logo-mark" viewBox="0 0 60 60" aria-hidden="true">
+        <rect x="10" y="4" width="40" height="52" rx="7" fill="#FFF" stroke="#3E2F25" stroke-width="3"/>
+        <line x1="10" y1="26" x2="50" y2="26" stroke="#3E2F25" stroke-width="3"/>
+        <rect x="42" y="11" width="4" height="9" rx="2" fill="#3E2F25"/>
+        <rect x="42" y="31" width="4" height="12" rx="2" fill="#3E2F25"/>
+        <circle cx="22" cy="16" r="4.5" fill="#F5B82E"/>
+        <rect x="18" y="36" width="10" height="12" rx="3" fill="#5C8A4E"/>
+        <circle cx="34" cy="42" r="5" fill="#E4775B"/>
+      </svg>
+      <h1>nokori-mono<small>冷蔵庫の残り物、ぜんぶ味方。</small></h1>
+    </header>
+    <p class="lead">冷蔵庫にある食材を<b>3つまで</b>タップ。下のまな板にのせたら、定番レシピを提案します。</p>
+
+    <div id="cats"></div>
+  </section>
+
+  <!-- ========== 画面2：レシピ提案 ========== -->
+  <section id="screen-result" class="hidden">
+    <button type="button" class="back" id="btn-back">← 食材を選びなおす</button>
+    <p class="picked-line" id="picked-line"></p>
+    <h2 class="result-title" id="result-title"></h2>
+    <div id="recipes"></div>
+  </section>
+
+  <footer>nokori-mono — たべものを、さいごまでおいしく。</footer>
+</div>
+
+<!-- ========== まな板トレイ ========== -->
+<div class="tray" id="tray">
+  <div class="tray-inner" id="tray-inner">
+    <p class="tray-label">きょうの まな板（タップで外せます）</p>
+    <div class="tray-row">
+      <div class="slots" id="slots"></div>
+      <button type="button" class="go" id="btn-go" disabled>この3つで<br>検索</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ===================== データ ===================== */
+const MAX_PICK = 3;
+
+const INGREDIENTS = [
+  // 肉類
+  {id:"pork",    name:"豚肉",        emoji:"🥩", cat:"meat"},
+  {id:"chicken", name:"鶏肉",        emoji:"🍗", cat:"meat"},
+  {id:"mince",   name:"ひき肉",      emoji:"🍖", cat:"meat"},
+  {id:"ham",     name:"ハム・ベーコン", emoji:"🥓", cat:"meat"},
+  {id:"sausage", name:"ウインナー",   emoji:"🌭", cat:"meat"},
+  // 野菜類
+  {id:"cabbage", name:"キャベツ",  emoji:"🥬", cat:"veg"},
+  {id:"onion",   name:"玉ねぎ",    emoji:"🧅", cat:"veg"},
+  {id:"carrot",  name:"にんじん",  emoji:"🥕", cat:"veg"},
+  {id:"potato",  name:"じゃがいも", emoji:"🥔", cat:"veg"},
+  {id:"moyashi", name:"もやし",    emoji:"🌱", cat:"veg"},
+  {id:"pepper",  name:"ピーマン",  emoji:"🫑", cat:"veg"},
+  {id:"hakusai", name:"白菜",      emoji:"🥗", cat:"veg"},
+  {id:"daikon",  name:"大根",      emoji:"⚪", cat:"veg"},
+  {id:"mushroom",name:"きのこ",    emoji:"🍄", cat:"veg"},
+  {id:"tomato",  name:"トマト",    emoji:"🍅", cat:"veg"},
+  {id:"negi",    name:"長ねぎ",    emoji:"🎋", cat:"veg"},
+  // その他
+  {id:"egg",    name:"卵",     emoji:"🥚", cat:"etc"},
+  {id:"tofu",   name:"豆腐",   emoji:"🍲", cat:"etc"},
+  {id:"natto",  name:"納豆",   emoji:"🫘", cat:"etc"},
+  {id:"cheese", name:"チーズ", emoji:"🧀", cat:"etc"},
+  {id:"rice",   name:"ごはん", emoji:"🍚", cat:"etc"},
+];
+
+const CATS = [
+  {id:"meat", label:"肉類",                 color:"#E4775B"},
+  {id:"veg",  label:"野菜類",               color:"#5C8A4E"},
+  {id:"etc",  label:"その他（卵・豆腐など）", color:"#D99A12"},
+];
+
+/* art: pan / bowl / soup / pot / plate / omelette / curry  +  c: 具材アクセント色 */
+const RECIPES = [
+  {name:"回鍋肉（ホイコーロー）", time:15, art:"pan", c:"#6FA05B",
+   ing:["pork","cabbage","pepper"],
+   pantry:["味噌","豆板醤","しょうゆ","砂糖","にんにく","ごま油"],
+   steps:["豚肉とキャベツ・ピーマンをひと口大に切る。","フライパンに油を熱し、豚肉を色が変わるまで炒める。","野菜を加えて強火でさっと炒め合わせる。","味噌・豆板醤・しょうゆ・砂糖を混ぜたタレを絡めて完成。"]},
+  {name:"具だくさん野菜炒め", time:10, art:"pan", c:"#E4775B",
+   ing:["pork","cabbage","moyashi","carrot","pepper","onion"],
+   pantry:["塩こしょう","しょうゆ","鶏ガラスープの素","油"],
+   steps:["野菜は食べやすい大きさに切る（火の通りにくい順に準備）。","油を熱して肉から炒め、にんじん→キャベツ・もやしの順に投入。","強火で手早く炒め、塩こしょうと鶏ガラ＋しょうゆで味を決める。"]},
+  {name:"具だくさん豚汁", time:25, art:"soup", c:"#E4A23C",
+   ing:["pork","daikon","carrot","potato","negi","tofu"],
+   pantry:["味噌","だしの素","水","ごま油"],
+   steps:["野菜は薄めのいちょう切り・小さめに切ると時短に。","鍋にごま油を熱し豚肉を炒め、野菜を加えてさっと炒める。","水とだしの素を入れて野菜がやわらかくなるまで煮る。","火を弱めて味噌を溶き入れ、ねぎ・豆腐を加えてひと煮立ち。"]},
+  {name:"肉じゃが", time:30, art:"pot", c:"#D9A14E",
+   ing:["pork","potato","onion","carrot"],
+   pantry:["しょうゆ","みりん","砂糖","酒","だしの素"],
+   steps:["じゃがいもは大きめ、玉ねぎはくし切り、にんじんは乱切りに。","鍋で肉を炒め、野菜を加えて油をなじませる。","ひたひたの水と調味料を入れ、落とし蓋をして15分ほど煮る。","火を止めて少し置くと味がしみておいしい。"]},
+  {name:"豚の生姜焼き", time:12, art:"plate", c:"#C98046",
+   ing:["pork","onion","cabbage"],
+   pantry:["しょうが","しょうゆ","みりん","酒","砂糖"],
+   steps:["しょうが・しょうゆ・みりん・酒・砂糖でタレを作る。","豚肉と薄切り玉ねぎを中火で焼く。","タレを加えて照りが出るまで絡める。せん切りキャベツを添えて。"]},
+  {name:"親子丼", time:15, art:"bowl", c:"#F5B82E",
+   ing:["chicken","egg","onion","rice","negi"],
+   pantry:["めんつゆ（または しょうゆ＋みりん＋砂糖）","水"],
+   steps:["鶏肉はひと口大、玉ねぎは薄切りに。","小さめのフライパンにめんつゆ＋水を煮立て、鶏肉と玉ねぎを煮る。","火が通ったら溶き卵を回し入れ、半熟で火を止める。","あたたかいごはんにのせ、ねぎを散らす。"]},
+  {name:"おうちカレーライス", time:35, art:"curry", c:"#9C5B2B",
+   ing:["potato","carrot","onion","pork","chicken","rice"],
+   pantry:["カレールー","水","油"],
+   steps:["肉と野菜を食べやすく切り、鍋で炒める。","水を加えて野菜がやわらかくなるまで煮込む（約15分）。","火を止めてルーを溶かし、とろみが出るまで弱火で煮る。","ごはんにたっぷりかけて完成。"]},
+  {name:"ふっくらハンバーグ", time:25, art:"plate", c:"#7A4A2B",
+   ing:["mince","onion","egg"],
+   pantry:["パン粉","塩こしょう","ケチャップ","中濃ソース"],
+   steps:["みじん切り玉ねぎ・卵・パン粉・塩こしょうをひき肉に混ぜ、よくこねる。","小判形にして中央をくぼませ、中火で両面に焼き色をつける。","フタをして弱火で5〜6分蒸し焼きに。","ケチャップ＋ソースを煮詰めてかける。"]},
+  {name:"麻婆豆腐", time:15, art:"pan", c:"#C0392B",
+   ing:["mince","tofu","negi"],
+   pantry:["豆板醤","味噌","しょうゆ","鶏ガラスープの素","片栗粉","にんにく"],
+   steps:["ひき肉とにんにくを炒め、豆板醤を加えて香りを出す。","水＋鶏ガラ＋味噌＋しょうゆを入れ、角切り豆腐を加えて煮る。","水溶き片栗粉でとろみをつけ、ねぎを散らす。"]},
+  {name:"そぼろ二色丼", time:15, art:"bowl", c:"#8A5A2B",
+   ing:["mince","egg","rice"],
+   pantry:["しょうゆ","砂糖","みりん","塩"],
+   steps:["ひき肉をしょうゆ・砂糖・みりんでポロポロになるまで炒める。","別の鍋で卵に砂糖と塩を加え、菜箸4本で混ぜながら炒り卵に。","ごはんに2色を半分ずつのせて完成。"]},
+  {name:"パラパラチャーハン", time:10, art:"pan", c:"#F5B82E",
+   ing:["rice","egg","negi","ham","sausage"],
+   pantry:["しょうゆ","塩こしょう","鶏ガラスープの素","油"],
+   steps:["具材は細かく刻んでおく。ごはんは温めておく。","強火で溶き卵→すぐにごはんを入れ、切るように炒める。","具材と鶏ガラを加え、鍋肌からしょうゆを回し入れて香ばしく。"]},
+  {name:"とろとろオムライス", time:20, art:"omelette", c:"#E74C3C",
+   ing:["rice","egg","onion","chicken"],
+   pantry:["ケチャップ","バター","塩こしょう"],
+   steps:["鶏肉と玉ねぎを炒め、ごはんとケチャップを加えてチキンライスに。","別のフライパンにバターを溶かし、溶き卵を半熟に焼く。","チキンライスに卵をのせ、ケチャップをかけて完成。"]},
+  {name:"ジャーマンポテト", time:15, art:"pan", c:"#E8C547",
+   ing:["potato","ham","onion","cheese"],
+   pantry:["にんにく","塩こしょう","バター（または油）"],
+   steps:["じゃがいもはレンジで3〜4分加熱してやわらかく。","バターでにんにく・ベーコン・玉ねぎを炒める。","じゃがいもを加えて焼き色をつけ、塩こしょう。仕上げにチーズも◎。"]},
+  {name:"ごろごろポトフ", time:30, art:"soup", c:"#D98A4B",
+   ing:["sausage","cabbage","carrot","potato","onion"],
+   pantry:["コンソメ","塩こしょう","水","ローリエ（あれば）"],
+   steps:["野菜は大きめに切る。キャベツはくし切りに。","鍋に材料と水・コンソメを入れて火にかける。","野菜がやわらかくなるまで20分ほどコトコト煮て、塩こしょうで調える。"]},
+  {name:"八宝菜風うま煮", time:15, art:"pan", c:"#6FA05B",
+   ing:["hakusai","pork","carrot","mushroom"],
+   pantry:["鶏ガラスープの素","オイスターソース","片栗粉","ごま油"],
+   steps:["豚肉を炒め、にんじん→白菜の芯→葉ときのこの順に加える。","水＋鶏ガラ＋オイスターソースを入れてさっと煮る。","水溶き片栗粉でとろみをつけ、ごま油をひと回し。ごはんにかけても◎。"]},
+  {name:"白菜と豚のミルフィーユ鍋", time:20, art:"pot", c:"#9BBE85",
+   ing:["hakusai","pork"],
+   pantry:["だしの素","酒","ポン酢"],
+   steps:["白菜と豚肉を交互に重ね、5cm幅に切る。","鍋にぎっしり立てて並べ、水＋だし＋酒を注ぐ。","フタをして10分ほど煮て、ポン酢でいただく。"]},
+  {name:"鶏と大根のほっこり煮", time:35, art:"pot", c:"#E8DCC8",
+   ing:["chicken","daikon","egg"],
+   pantry:["しょうゆ","みりん","砂糖","しょうが"],
+   steps:["大根は2cm厚のいちょう切りにし、レンジで5分下ゆで。","鶏肉を焼き色がつくまで炒め、大根と調味料・水を加える。","落とし蓋をして20分煮る。ゆで卵を入れて味玉風にしても◎。"]},
+  {name:"納豆チャーハン", time:10, art:"pan", c:"#8A6A38",
+   ing:["natto","rice","egg","negi"],
+   pantry:["しょうゆ","塩こしょう","油","付属のタレ"],
+   steps:["納豆はタレを混ぜておく。ねぎは小口切り。","溶き卵とごはんを強火で炒める。","納豆とねぎを加えてさっと炒め、しょうゆを鍋肌から回しかける。"]},
+  {name:"トマトと卵のふんわり炒め", time:8, art:"pan", c:"#E74C3C",
+   ing:["tomato","egg","negi"],
+   pantry:["鶏ガラスープの素","塩こしょう","砂糖ひとつまみ","油"],
+   steps:["トマトはくし切り、卵は塩を加えて溶いておく。","多めの油で卵を半熟に炒めて一度取り出す。","トマトをさっと炒め、卵を戻して鶏ガラと塩こしょうで調える。"]},
+  {name:"チーズタッカルビ風", time:20, art:"pan", c:"#F2C744",
+   ing:["chicken","cabbage","cheese","onion"],
+   pantry:["コチュジャン（または味噌＋ケチャップ）","しょうゆ","砂糖","にんにく"],
+   steps:["鶏肉をタレ（コチュジャン・しょうゆ・砂糖・にんにく）に絡める。","フライパンで鶏肉と野菜を蒸し焼きにする。","中央を空けてチーズを入れ、溶けたら絡めながらどうぞ。"]},
+  {name:"豆腐チャンプルー", time:12, art:"pan", c:"#F0EAD8",
+   ing:["tofu","egg","moyashi","pork"],
+   pantry:["しょうゆ","塩こしょう","かつお節","ごま油"],
+   steps:["豆腐は水切りして大きめにちぎる。","ごま油で豚肉→豆腐を焼き色がつくまで炒める。","もやしを加え、溶き卵を回し入れてしょうゆで調味。かつお節をのせて。"]},
+  {name:"きのこと卵のとろみスープ", time:10, art:"soup", c:"#A57C4F",
+   ing:["mushroom","egg","negi","tofu"],
+   pantry:["鶏ガラスープの素","しょうゆ","片栗粉","ごま油"],
+   steps:["鍋に水と鶏ガラを煮立て、ほぐしたきのこを煮る。","水溶き片栗粉でとろみをつける。","溶き卵を細く回し入れ、ねぎとごま油で仕上げる。"]},
+  {name:"豚玉お好み焼き", time:20, art:"plate", c:"#B5703F",
+   ing:["cabbage","egg","pork"],
+   pantry:["小麦粉","だしの素","ソース","マヨネーズ","かつお節"],
+   steps:["小麦粉・水・だし・卵を混ぜ、刻んだキャベツをたっぷり加える。","フライパンに生地を広げ、豚肉をのせて中火で焼く。","両面こんがり焼けたら、ソース・マヨ・かつお節で仕上げ。"]},
+  {name:"ピーマンの肉詰め", time:20, art:"plate", c:"#5C8A4E",
+   ing:["pepper","mince","onion","cheese"],
+   pantry:["パン粉","塩こしょう","ケチャップ","片栗粉"],
+   steps:["ひき肉・みじん玉ねぎ・パン粉・塩こしょうを混ぜてタネを作る。","半分に切ったピーマンに片栗粉をふり、タネを詰める。","肉側から焼き、フタをして蒸し焼きに。ケチャップやチーズで召し上がれ。"]},
+  {name:"ミネストローネ", time:25, art:"soup", c:"#D6452F",
+   ing:["tomato","onion","carrot","sausage","potato"],
+   pantry:["コンソメ","にんにく","塩こしょう","オリーブオイル"],
+   steps:["野菜とウインナーは1cm角に切る。","オイルでにんにくと具材を炒める。","水・コンソメ・ざく切りトマトを加えて15分煮込み、塩こしょうで調える。"]},
+];
+
+/* ===================== SVGイラスト ===================== */
+function steamSvg(x){
+  return `<g stroke="#B8A98F" stroke-width="3" stroke-linecap="round" fill="none">
+    <path class="steam" d="M${x-12} 30 q -4 -7 0 -13 q 4 -6 0 -12"/>
+    <path class="steam s2" d="M${x+12} 32 q 4 -7 0 -13 q -4 -6 0 -12"/>
+  </g>`;
+}
+const ART = {
+  pan:(c)=>`<svg viewBox="0 0 200 140" role="img" aria-label="フライパン料理のイラスト">
+    <ellipse cx="92" cy="118" rx="72" ry="10" fill="#3E2F25" opacity=".08"/>
+    <path d="M156 86 L196 76 q 6 -1 6 5 q 0 6 -6 7 L158 96 Z" fill="#3E2F25"/>
+    <ellipse cx="92" cy="90" rx="68" ry="26" fill="#54453B"/>
+    <ellipse cx="92" cy="84" rx="68" ry="26" fill="#6E5B4D"/>
+    <ellipse cx="92" cy="84" rx="56" ry="20" fill="#46362C"/>
+    <ellipse cx="92" cy="82" rx="50" ry="17" fill="${c}"/>
+    <circle cx="72" cy="78" r="6" fill="#FFF" opacity=".85"/>
+    <circle cx="96" cy="86" r="5" fill="#F5B82E"/>
+    <circle cx="112" cy="76" r="5.5" fill="#E4775B"/>
+    <circle cx="86" cy="72" r="4" fill="#FFF" opacity=".6"/>
+    ${steamSvg(92)}
+  </svg>`,
+  bowl:(c)=>`<svg viewBox="0 0 200 140" role="img" aria-label="どんぶり料理のイラスト">
+    <ellipse cx="100" cy="124" rx="62" ry="9" fill="#3E2F25" opacity=".08"/>
+    <path d="M40 78 q 60 -34 120 0 l -8 26 q -8 18 -52 18 q -44 0 -52 -18 Z" fill="#4A6FA5"/>
+    <path d="M40 78 q 60 16 120 0 l -8 26 q -8 18 -52 18 q -44 0 -52 -18 Z" fill="#3D5C88"/>
+    <path d="M48 74 q 52 -26 104 0 q -52 14 -104 0 Z" fill="#FFF"/>
+    <ellipse cx="100" cy="68" rx="44" ry="13" fill="${c}"/>
+    <circle cx="84" cy="64" r="5" fill="#F5B82E"/>
+    <circle cx="106" cy="70" r="4.5" fill="#FFF" opacity=".8"/>
+    <circle cx="118" cy="62" r="4" fill="#6FA05B"/>
+    ${steamSvg(100)}
+  </svg>`,
+  soup:(c)=>`<svg viewBox="0 0 200 140" role="img" aria-label="スープ・汁物のイラスト">
+    <ellipse cx="100" cy="124" rx="58" ry="9" fill="#3E2F25" opacity=".08"/>
+    <path d="M46 70 q 54 -18 108 0 l -10 34 q -6 16 -44 16 q -38 0 -44 -16 Z" fill="#A8442F"/>
+    <path d="M46 70 q 54 14 108 0 l -10 34 q -6 16 -44 16 q -38 0 -44 -16 Z" fill="#8C3625"/>
+    <ellipse cx="100" cy="68" rx="50" ry="13" fill="${c}"/>
+    <circle cx="84" cy="65" r="5" fill="#FFF" opacity=".85"/>
+    <circle cx="108" cy="70" r="5" fill="#6FA05B"/>
+    <circle cx="120" cy="63" r="4" fill="#F0EAD8"/>
+    ${steamSvg(100)}
+  </svg>`,
+  pot:(c)=>`<svg viewBox="0 0 200 140" role="img" aria-label="鍋・煮物のイラスト">
+    <ellipse cx="100" cy="126" rx="66" ry="9" fill="#3E2F25" opacity=".08"/>
+    <path d="M38 72 h124 v8 a62 38 0 0 1 -124 0 Z" fill="#D9784A"/>
+    <path d="M38 72 h124 v8 q -62 14 -124 0 Z" fill="#B85E36"/>
+    <path d="M48 66 q 52 -26 104 0 q 2 6 -4 6 h -96 q -6 0 -4 -6 Z" fill="#F0EAD8"/>
+    <rect x="92" y="46" width="16" height="12" rx="6" fill="#8C7763"/>
+    <ellipse cx="100" cy="86" rx="34" ry="7" fill="${c}" opacity=".0"/>
+    ${steamSvg(100)}
+  </svg>`,
+  plate:(c)=>`<svg viewBox="0 0 200 140" role="img" aria-label="お皿の料理のイラスト">
+    <ellipse cx="100" cy="120" rx="70" ry="10" fill="#3E2F25" opacity=".08"/>
+    <ellipse cx="100" cy="104" rx="76" ry="20" fill="#E8DCC8"/>
+    <ellipse cx="100" cy="100" rx="76" ry="20" fill="#FFF"/>
+    <ellipse cx="100" cy="100" rx="58" ry="14" fill="#F6EEDC"/>
+    <ellipse cx="96" cy="88" rx="36" ry="16" fill="${c}"/>
+    <ellipse cx="92" cy="83" rx="26" ry="10" fill="#FFF" opacity=".22"/>
+    <circle cx="134" cy="94" r="7" fill="#6FA05B"/>
+    <circle cx="142" cy="100" r="5" fill="#E74C3C"/>
+    ${steamSvg(96)}
+  </svg>`,
+  omelette:(c)=>`<svg viewBox="0 0 200 140" role="img" aria-label="オムライスのイラスト">
+    <ellipse cx="100" cy="120" rx="70" ry="10" fill="#3E2F25" opacity=".08"/>
+    <ellipse cx="100" cy="102" rx="76" ry="20" fill="#FFF"/>
+    <ellipse cx="100" cy="102" rx="76" ry="20" fill="none" stroke="#E8DCC8" stroke-width="3"/>
+    <ellipse cx="100" cy="88" rx="44" ry="20" fill="#F5B82E"/>
+    <ellipse cx="94" cy="82" rx="30" ry="11" fill="#FBD46B"/>
+    <path d="M76 84 q 10 8 16 0 q 10 8 16 0 q 10 8 16 0" stroke="${c}" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <circle cx="148" cy="98" r="6" fill="#6FA05B"/>
+    ${steamSvg(100)}
+  </svg>`,
+  curry:(c)=>`<svg viewBox="0 0 200 140" role="img" aria-label="カレーライスのイラスト">
+    <ellipse cx="100" cy="120" rx="72" ry="10" fill="#3E2F25" opacity=".08"/>
+    <ellipse cx="100" cy="102" rx="78" ry="21" fill="#FFF"/>
+    <ellipse cx="100" cy="102" rx="78" ry="21" fill="none" stroke="#E8DCC8" stroke-width="3"/>
+    <path d="M30 100 q 34 -18 70 -8 l 0 14 q -36 10 -70 -6 Z" fill="#FFFDF5"/>
+    <ellipse cx="64" cy="96" rx="34" ry="12" fill="#FFFDF5"/>
+    <path d="M96 86 q 44 -12 72 8 q -8 16 -40 16 q -26 0 -34 -10 Z" fill="${c}"/>
+    <circle cx="124" cy="92" r="5" fill="#E8C547"/>
+    <circle cx="142" cy="98" r="5" fill="#D9784A"/>
+    <circle cx="132" cy="102" r="4" fill="#6FA05B"/>
+    ${steamSvg(120)}
+  </svg>`,
+};
+
+/* ===================== 状態 ===================== */
+let picked = []; // ingredient id の配列（最大3）
+
+const $cats   = document.getElementById("cats");
+const $slots  = document.getElementById("slots");
+const $go     = document.getElementById("btn-go");
+const $tray   = document.getElementById("tray-inner");
+const $selectScreen = document.getElementById("screen-select");
+const $resultScreen = document.getElementById("screen-result");
+const $recipes      = document.getElementById("recipes");
+const $pickedLine   = document.getElementById("picked-line");
+const $resultTitle  = document.getElementById("result-title");
+
+const ingById = (id) => INGREDIENTS.find(i => i.id === id);
+const esc = (s) => s.replace(/[&<>"]/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
+
+/* ===================== 食材選択画面 ===================== */
+function renderCats(){
+  $cats.innerHTML = CATS.map(cat => {
+    const items = INGREDIENTS.filter(i => i.cat === cat.id);
+    return `<section class="cat" aria-label="${esc(cat.label)}">
+      <div class="cat-head">
+        <span class="dot" style="background:${cat.color}"></span>
+        <h2>${esc(cat.label)}</h2>
+        <span class="count">${items.length}品目</span>
+      </div>
+      <div class="grid">
+        ${items.map(i => `
+          <button type="button" class="magnet" data-id="${i.id}" data-cat="${i.cat}" aria-pressed="false">
+            <span class="face" aria-hidden="true">${i.emoji}</span>${esc(i.name)}
+          </button>`).join("")}
+      </div>
+    </section>`;
+  }).join("");
+}
+
+function togglePick(id){
+  if (picked.includes(id)) {
+    picked = picked.filter(p => p !== id);
+  } else if (picked.length < MAX_PICK) {
+    picked.push(id);
+  } else {
+    // 3つ選択済み → まな板を揺らして知らせる
+    $tray.classList.remove("shake");
+    void $tray.offsetWidth;
+    $tray.classList.add("shake");
+    return;
+  }
+  syncUI();
+}
+
+function syncUI(){
+  const full = picked.length >= MAX_PICK;
+  document.querySelectorAll(".magnet").forEach(btn => {
+    const on = picked.includes(btn.dataset.id);
+    btn.setAttribute("aria-pressed", String(on));
+    btn.disabled = full && !on;  // 3つ選んだら他を非活性化
+  });
+  // まな板スロット
+  $slots.innerHTML = Array.from({length: MAX_PICK}, (_, i) => {
+    const id = picked[i];
+    if (!id) return `<div class="slot" aria-hidden="true">あと${MAX_PICK - picked.length}つ</div>`;
+    const ing = ingById(id);
+    return `<button type="button" class="slot filled" data-id="${id}" aria-label="${esc(ing.name)}を外す">
+      <span class="face" aria-hidden="true">${ing.emoji}</span>${esc(ing.name)}<span class="x">タップで外す</span>
+    </button>`;
+  }).join("");
+  $go.disabled = picked.length === 0;
+  $go.innerHTML = picked.length === 0
+    ? "食材を<br>えらんでね"
+    : `この${picked.length}つで<br>検索`;
+}
+
+/* ===================== レシピ検索 ===================== */
+function searchRecipes(ids){
+  return RECIPES
+    .map(r => {
+      const hits = ids.filter(id => r.ing.includes(id));
+      return {...r, hits, score: hits.length};
+    })
+    .filter(r => r.score > 0)
+    .sort((a, b) => b.score - a.score || a.ing.length - b.ing.length || a.time - b.time)
+    .slice(0, 4);
+}
+
+function renderResults(){
+  const matched = searchRecipes(picked);
+  const names = picked.map(id => ingById(id).name);
+
+  $pickedLine.innerHTML = "えらんだ食材：" +
+    picked.map(id => `<span class="chip">${ingById(id).emoji} ${esc(ingById(id).name)}</span>`).join("");
+
+  if (matched.length === 0) {
+    $resultTitle.textContent = "ぴったりの定番料理が見つかりませんでした";
+    $recipes.innerHTML = `<div class="empty">この組み合わせはレシピ帳にまだ載っていません。<br>食材を1つ入れ替えると、ぐっと候補が広がります 🍳</div>`;
+    return;
+  }
+  $resultTitle.innerHTML = `この食材なら <em>${matched.length}品</em> 作れます！`;
+
+  $recipes.innerHTML = matched.map((r, idx) => `
+    <details class="recipe" ${idx === 0 ? "open" : ""}>
+      <summary>
+        <span class="thumb">${ART[r.art](r.c)}</span>
+        <span class="r-head">
+          <span class="r-name">${esc(r.name)}</span>
+          <span class="r-meta">
+            <span class="badge match">食材 ${r.score}/${picked.length} 一致</span>
+            <span class="badge time">⏱ 約${r.time}分</span>
+          </span>
+        </span>
+        <span class="caret" aria-hidden="true">▼</span>
+      </summary>
+      <div class="r-body">
+        <div class="hero-art">${ART[r.art](r.c)}</div>
+
+        <p class="sec-label">材料（2人分・目安）</p>
+        <ul class="ing">
+          ${r.ing.map(id => {
+            const ing = ingById(id);
+            const hit = picked.includes(id);
+            return `<li class="${hit ? "hit" : ""}">${ing.emoji} ${esc(ing.name)}</li>`;
+          }).join("")}
+        </ul>
+        <p class="pantry">＋ご家庭の調味料：${r.pantry.map(esc).join("／")}</p>
+
+        <p class="sec-label">作り方</p>
+        <ol class="steps">
+          ${r.steps.map(s => `<li>${esc(s)}</li>`).join("")}
+        </ol>
+      </div>
+    </details>
+  `).join("");
+}
+
+/* ===================== 画面遷移 ===================== */
+function showResults(){
+  renderResults();
+  $selectScreen.classList.add("hidden");
+  $resultScreen.classList.remove("hidden");
+  document.getElementById("tray").classList.add("hidden");
+  window.scrollTo({top: 0});
+}
+function showSelect(){
+  $resultScreen.classList.add("hidden");
+  $selectScreen.classList.remove("hidden");
+  document.getElementById("tray").classList.remove("hidden");
+  window.scrollTo({top: 0});
+}
+
+/* ===================== イベント ===================== */
+$cats.addEventListener("click", e => {
+  const btn = e.target.closest(".magnet");
+  if (btn && !btn.disabled) togglePick(btn.dataset.id);
+});
+$slots.addEventListener("click", e => {
+  const slot = e.target.closest(".slot.filled");
+  if (slot) togglePick(slot.dataset.id);
+});
+$go.addEventListener("click", showResults);
+document.getElementById("btn-back").addEventListener("click", showSelect);
+
+/* ===================== 初期化 ===================== */
+renderCats();
+syncUI();
+</script>
+</body>
+</html>
