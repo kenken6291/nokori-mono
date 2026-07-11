@@ -80,11 +80,49 @@
      投稿フォーム
      ========================================================== */
   let pendingPhoto = null; // { base64, mimeType }
+  const MAX_RECIPE_ING = 3;
+  let selectedIngredientIds = [];
+  let editingRecipeId = null;
+  let currentRecipes = [];
 
   function setFormError(msg) {
     const el = $("recipeFormError");
     if (!el) return;
     if (msg) { el.textContent = msg; el.hidden = false; } else { el.hidden = true; el.textContent = ""; }
+  }
+
+  /* ==========================================================
+     食材ピッカー（冷蔵庫の食材から最大3個までタップ）
+     js/app.js が公開する window.NokoriIngredients を共有利用する
+     ========================================================== */
+  function renderIngredientPicker() {
+    const picker = $("recipeIngredientPicker");
+    if (!picker) return;
+    const items = window.NokoriIngredients || [];
+    picker.innerHTML = "";
+    items.forEach((it) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "ing";
+      b.dataset.id = it.id;
+      const isSelected = selectedIngredientIds.includes(it.id);
+      b.setAttribute("aria-pressed", String(isSelected));
+      b.disabled = !isSelected && selectedIngredientIds.length >= MAX_RECIPE_ING;
+      b.innerHTML = `<span class="emoji" aria-hidden="true">${it.emoji || ""}</span>${escapeHtml(it.name)}`;
+      b.addEventListener("click", () => toggleIngredient(it.id));
+      picker.appendChild(b);
+    });
+  }
+
+  function toggleIngredient(id) {
+    if (selectedIngredientIds.includes(id)) {
+      selectedIngredientIds = selectedIngredientIds.filter((x) => x !== id);
+    } else if (selectedIngredientIds.length < MAX_RECIPE_ING) {
+      selectedIngredientIds = [...selectedIngredientIds, id];
+    } else {
+      return;
+    }
+    renderIngredientPicker();
   }
 
   function resetRecipeForm() {
@@ -93,7 +131,41 @@
     $("recipePhotoPreview").removeAttribute("src");
     $("recipePhotoHint").textContent = "";
     pendingPhoto = null;
+    selectedIngredientIds = [];
+    editingRecipeId = null;
+    $("recipeSubmitBtn").textContent = "投稿する";
+    renderIngredientPicker();
     setFormError("");
+  }
+
+  function startEditRecipe(recipeId) {
+    const r = currentRecipes.find((x) => x.id === recipeId);
+    if (!r) return;
+    resetRecipeForm();
+    editingRecipeId = recipeId;
+    $("recipeTitle").value = r.title || "";
+    $("recipeDescription").value = r.description || "";
+    $("recipeSteps").value = r.steps || "";
+
+    const items = window.NokoriIngredients || [];
+    const idByName = Object.fromEntries(items.map((i) => [i.name, i.id]));
+    selectedIngredientIds = (r.ingredients || [])
+      .map((n) => idByName[n])
+      .filter(Boolean)
+      .slice(0, MAX_RECIPE_ING);
+    renderIngredientPicker();
+
+    if (r.hasPhoto) {
+      $("recipePhotoPreview").src = window.NokoriAuth.getPhotoUrl(r.id);
+      $("recipePhotoPreview").hidden = false;
+      $("recipePhotoHint").textContent = "既存の写真です（変更する場合のみ新しい写真を選んでください）";
+    }
+
+    $("recipeSubmitBtn").textContent = "更新する";
+    const form = $("recipeForm");
+    form.hidden = false;
+    $("recipeTitle").focus();
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function onPhotoSelected(e) {
@@ -117,8 +189,9 @@
     setFormError("");
 
     const title = $("recipeTitle").value.trim();
-    const ingredients = $("recipeIngredients").value
-      .split(/[、,]/).map((s) => s.trim()).filter(Boolean).slice(0, 10);
+    const items = window.NokoriIngredients || [];
+    const nameById = Object.fromEntries(items.map((i) => [i.id, i.name]));
+    const ingredients = selectedIngredientIds.map((id) => nameById[id]).filter(Boolean);
     const description = $("recipeDescription").value.trim();
     const steps = $("recipeSteps").value.trim();
 
@@ -133,7 +206,10 @@
         payload.photoBase64 = pendingPhoto.base64;
         payload.mimeType = pendingPhoto.mimeType;
       }
-      const data = await window.NokoriAuth.authedPost("postCommunityRecipe", payload);
+      const isEditing = !!editingRecipeId;
+      if (isEditing) payload.recipeId = editingRecipeId;
+      const action = isEditing ? "updateCommunityRecipe" : "postCommunityRecipe";
+      const data = await window.NokoriAuth.authedPost(action, payload);
       if (!data || data.error) { setFormError(messageFor(data && data.error)); return; }
       resetRecipeForm();
       $("recipeForm").hidden = true;
@@ -158,6 +234,10 @@
     const stepsHtml = r.steps
       ? `<details class="steps"><summary>作り方を見る</summary><p>${escapeHtml(r.steps)}</p></details>`
       : "";
+    const ownerActionsHtml = r.isMine
+      ? `<button type="button" class="edit-btn">✏️ 編集</button>
+         <button type="button" class="delete-btn">🗑 削除</button>`
+      : `<button type="button" class="report-btn">🚩 通報</button>`;
     return `
       <article class="recipe-card" data-id="${escapeHtml(r.id)}">
         <header>
@@ -174,7 +254,7 @@
             ${r.liked ? "❤" : "🤍"} <span class="like-count">${r.likeCount}</span>
           </button>
           <button type="button" class="comment-toggle-btn">💬 <span class="comment-count">${r.commentCount}</span></button>
-          <button type="button" class="report-btn">🚩 通報</button>
+          ${ownerActionsHtml}
         </div>
         <div class="comments" hidden>
           <div class="comment-list"></div>
@@ -192,9 +272,9 @@
     try {
       const data = await window.NokoriAuth.authedGet("communityRecipes", {});
       if (!data || data.error) return;
-      const recipes = data.recipes || [];
-      feedEl.innerHTML = recipes.map(recipeCardHtml).join("");
-      emptyEl.hidden = recipes.length > 0;
+      currentRecipes = data.recipes || [];
+      feedEl.innerHTML = currentRecipes.map(recipeCardHtml).join("");
+      emptyEl.hidden = currentRecipes.length > 0;
       feedLoaded = true;
     } catch (err) {
       // 静かに失敗（オフライン等）。次回タブ表示時に再試行される
@@ -241,6 +321,37 @@
         window.alert("通報を受け付けました。ご協力ありがとうございます。");
       } catch (err) {
         window.alert("通報の送信に失敗しました。時間をおいて再度お試しください。");
+      }
+      return;
+    }
+
+    if (e.target.closest(".edit-btn")) {
+      startEditRecipe(recipeId);
+      return;
+    }
+
+    if (e.target.closest(".delete-btn")) {
+      const ok = window.confirm("この投稿を削除しますか？この操作は取り消せません。");
+      if (!ok) return;
+      const btn = e.target.closest(".delete-btn");
+      btn.disabled = true;
+      try {
+        const data = await window.NokoriAuth.authedPost("deleteCommunityRecipe", { recipeId });
+        if (!data || data.error) {
+          window.alert(messageFor(data && data.error));
+          btn.disabled = false;
+          return;
+        }
+        currentRecipes = currentRecipes.filter((r) => r.id !== recipeId);
+        card.remove();
+        $("communityEmpty").hidden = currentRecipes.length > 0;
+        if (editingRecipeId === recipeId) {
+          resetRecipeForm();
+          $("recipeForm").hidden = true;
+        }
+      } catch (err) {
+        window.alert(messageFor(""));
+        btn.disabled = false;
       }
       return;
     }
@@ -298,6 +409,8 @@
   function init() {
     $("newRecipeBtn").addEventListener("click", () => {
       const form = $("recipeForm");
+      const willShow = form.hidden;
+      if (willShow) resetRecipeForm(); // 編集モードの残留状態をクリアして新規投稿として開く
       form.hidden = !form.hidden;
       if (!form.hidden) $("recipeTitle").focus();
     });
@@ -309,6 +422,7 @@
     $("recipePhoto").addEventListener("change", onPhotoSelected);
     $("communityFeed").addEventListener("click", onFeedClick);
     $("communityFeed").addEventListener("submit", onFeedSubmit);
+    renderIngredientPicker();
 
     window.addEventListener("nokori-tab-shown", (e) => {
       if (e.detail && e.detail.tab === "community" && !feedLoaded) {
