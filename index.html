@@ -305,7 +305,9 @@ footer.site a{ color:var(--ink-soft); }
   min-height:100vh; display:flex; align-items:center; justify-content:center;
   padding:clamp(16px,5vw,32px); background:var(--bg);
 }
-   .auth-screen[hidden]{ display:none; }
+.auth-screen[hidden]{ display:none; }
+/* hidden属性はUAスタイルのdisplay:noneだが、上のdisplay:flexが同じ詳細度で競合し勝ってしまうため、
+   明示的に上書きする（これが無いと、JSでhidden=trueにしてもログイン画面が消えないバグになる） */
 .auth-card{
   width:100%; max-width:420px; background:var(--card); border:1px solid var(--line);
   border-radius:20px; padding:clamp(20px,5vw,32px); box-shadow:0 10px 30px rgba(60,40,10,.08);
@@ -742,8 +744,8 @@ footer.site a{ color:var(--ink-soft); }
       <input type="text" id="recipeTitle" maxlength="60" required>
     </div>
     <div class="field">
-      <label for="recipeIngredients">使った食材（カンマ区切り、最大10個）</label>
-      <input type="text" id="recipeIngredients" placeholder="例: 豚肉, キャベツ, 卵">
+      <label id="recipeIngredientsLabel">使った食材（冷蔵庫の食材から最大3個までタップ）</label>
+      <div id="recipeIngredientPicker" class="grid" role="group" aria-labelledby="recipeIngredientsLabel"></div>
     </div>
     <div class="field">
       <label for="recipeDescription">紹介文</label>
