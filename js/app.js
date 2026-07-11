@@ -146,10 +146,12 @@
 
   let flat = Object.values(INGREDIENTS).flat();
   let byId = Object.fromEntries(flat.map(i => [i.id, i]));
+  window.NokoriIngredients = flat; // みんなのレシピの食材ピッカーと共有
 
   function rebuildIndex() {
     flat = Object.values(INGREDIENTS).flat();
     byId = Object.fromEntries(flat.map(i => [i.id, i]));
+    window.NokoriIngredients = flat;
   }
 
   function renderGrids() {
