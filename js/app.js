@@ -359,12 +359,12 @@
     if (!isAi) {
       const needCount = r.needs ? r.needs.length : 0;
       if (r.score === needCount) badges.push(`<span class="badge full">${t("fullBadge")}</span>`);
-      else if (r.score) badges.push(`<span class="badge partial">${t("partialBadge")(r.score)}</span>`);
+      else if (r.score) badges.push(`<span class="badge partial">${t("partialBadge", r.score)}</span>`);
     } else {
       badges.push(`<span class="badge ai">${t("aiBadge")}</span>`);
     }
-    if (r.time_min) badges.push(`<span class="badge time">⏱ ${t("minLabel")(r.time_min)}</span>`);
-    if (r.calories) badges.push(`<span class="badge cal">🔥 ${t("calLabel")(r.calories)}</span>`);
+    if (r.time_min) badges.push(`<span class="badge time">⏱ ${t("minLabel", r.time_min)}</span>`);
+    if (r.calories) badges.push(`<span class="badge cal">🔥 ${t("calLabel", r.calories)}</span>`);
     return `<article class="recipe"><h3>${isAi ? "🤖 " : ""}${escapeHtml(r.name)}</h3><p>${escapeHtml(r.desc)}</p><div class="meta">${badges.join("")}</div></article>`;
   }
 
