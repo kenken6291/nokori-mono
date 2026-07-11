@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<!-- ★レスポンシブの起点。viewport-fit=cover は iPhone のセーフエリア対応に必須 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="冷蔵庫の残り物食材を3つ選ぶだけで、定番料理のレシピを提案するアプリ（会員限定）">
+<title>nokori-mono｜冷蔵庫の残り物からレシピ提案</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2F6B3C">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" href="icons/icon-192.png">
+
+<!-- OGP / Twitterカード -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="nokori-mono｜冷蔵庫の残り物からレシピ提案">
+<meta property="og:description" content="冷蔵庫にある食材を3つ選ぶだけで、定番の家庭料理を提案します。">
+<meta property="og:image" content="https://kenken6291.github.io/nokori-mono/assets/ogp.png">
+<meta property="og:url" content="https://kenken6291.github.io/nokori-mono/">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="nokori-mono｜冷蔵庫の残り物からレシピ提案">
+<meta name="twitter:description" content="冷蔵庫にある食材を3つ選ぶだけで、定番の家庭料理を提案します。">
+<meta name="twitter:image" content="https://kenken6291.github.io/nokori-mono/assets/ogp.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+/* ==========================================================
+   nokori-mono 改善版スタイル
+   方針: 「モバイルファースト」。まずスマホ向けに書き、
+   メディアクエリ(@media min-width)でタブレット/PCへ拡張する。
+   JSでのデバイス判定(UA判定)は原則不要。CSSが自動で最適化する。
+   ========================================================== */
+
+:root{
+  --bg:        #FBF6EE;   /* 生成り（台所の明るさ） */
+  --ink:       #2B2118;   /* 墨色テキスト */
+  --ink-soft:  #7A6A58;
+  --board:     #DCA563;   /* まな板の木 */
+  --board-edge:#B9803F;
+  --accent:    #2F6B3C;   /* 野菜の緑＝主アクション色 */
+  --accent-ink:#FFFFFF;
+  --card:      #FFFFFF;
+  --line:      #E8DECF;
+  --radius:    14px;
+  --tap-min:   48px;
+  --bar-h:     132px;
+}
+
+*{ box-sizing:border-box; }
+html{ -webkit-text-size-adjust:100%; }
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  line-height:1.65;
+}
+body.has-app-root{ padding-bottom:calc(var(--bar-h) + env(safe-area-inset-bottom, 0px)); }
+
+h1,h2,.brand{ font-family:"Zen Maru Gothic","Hiragino Maru Gothic ProN",sans-serif; }
+
+.container{
+  width:100%;
+  max-width:1100px;
+  margin-inline:auto;
+  padding-inline:clamp(16px, 4vw, 32px);
+}
+
+header.site{
+  padding-block:clamp(20px, 5vw, 44px) 8px;
+  display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;
+}
+.brand{ font-size:clamp(22px, 6vw, 34px); font-weight:900; margin:0; letter-spacing:.02em; }
+.brand small{ display:block; font-size:clamp(14px, 3.6vw, 18px); color:var(--ink-soft); font-weight:700; margin-top:4px; }
+.lede{ margin:10px 0 0; color:var(--ink-soft); font-size:clamp(13px, 3.4vw, 15px); }
+.lede b{ color:var(--accent); }
+
+.header-actions{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.lang-toggle{
+  appearance:none; border:1.5px solid var(--line); background:var(--card);
+  border-radius:999px; padding:6px 14px; min-height:var(--tap-min); cursor:pointer;
+  font:inherit; font-weight:700; font-size:13px; color:var(--ink-soft);
+}
+.lang-toggle:hover{ border-color:var(--accent); color:var(--accent); }
+
+/* ---------- アカウントメニュー ---------- */
+.account-box{ position:relative; }
+#accountBtn{
+  appearance:none; border:1.5px solid var(--line); background:var(--card);
+  border-radius:999px; padding:6px 14px; min-height:var(--tap-min); cursor:pointer;
+  font:inherit; font-weight:700; font-size:13px; color:var(--ink);
+  display:inline-flex; align-items:center; gap:6px;
+}
+#accountMenu{
+  position:absolute; right:0; top:calc(100% + 6px); z-index:60;
+  background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+  box-shadow:0 8px 20px rgba(60,40,10,.14); min-width:180px; padding:6px;
+}
+#accountMenu button{
+  display:block; width:100%; text-align:left; appearance:none; border:0; background:none;
+  padding:10px 12px; border-radius:8px; font:inherit; font-size:13px; cursor:pointer; min-height:40px;
+}
+#accountMenu button:hover{ background:var(--bg); }
+.nickname-form{
+  position:absolute; right:0; top:calc(100% + 6px); z-index:60; width:240px;
+  background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+  box-shadow:0 8px 20px rgba(60,40,10,.14); padding:14px;
+}
+.nickname-form label{ font-size:12px; color:var(--ink-soft); font-weight:700; }
+.nickname-form input{
+  width:100%; margin-top:6px; padding:10px; border:1.5px solid var(--line); border-radius:10px; font:inherit; font-size:14px;
+}
+.nickname-form .row{ display:flex; gap:8px; margin-top:10px; }
+.nickname-form button{
+  flex:1; appearance:none; border:0; border-radius:999px; padding:8px; min-height:38px; font:inherit; font-weight:700; cursor:pointer;
+}
+.nickname-form .save{ background:var(--accent); color:#fff; }
+.nickname-form .cancel{ background:var(--line); color:var(--ink); }
+
+/* ---------- フィルター・ツールバー ---------- */
+.toolbar{ display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+.toolbar button{
+  appearance:none; border:1.5px solid var(--line); background:var(--card);
+  border-radius:999px; padding:8px 14px; min-height:40px; cursor:pointer;
+  font:inherit; font-size:13px; font-weight:700; color:var(--ink-soft);
+  display:inline-flex; align-items:center; gap:6px;
+  touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+}
+.toolbar button[aria-pressed="true"]{ background:#EAF3EC; border-color:var(--accent); color:var(--accent); }
+#photoInput{ display:none; }
+
+/* ---------- 前回の選択を復元するバナー ---------- */
+.remember-banner{
+  margin-top:14px; background:#FFF7E6; border:1.5px solid #EBD08C; border-radius:var(--radius);
+  padding:10px 14px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+  font-size:13px;
+}
+.remember-banner .actions{ display:flex; gap:8px; }
+.remember-banner button{
+  appearance:none; border:0; border-radius:999px; padding:8px 14px; min-height:36px;
+  font:inherit; font-weight:700; font-size:12px; cursor:pointer;
+}
+.remember-banner .restore{ background:var(--accent); color:#fff; }
+.remember-banner .dismiss{ background:transparent; color:var(--ink-soft); }
+
+/* ---------- 食材グリッド ---------- */
+.category{ margin-top:22px; }
+.category h2{
+  font-size:15px; font-weight:700; color:var(--ink-soft);
+  margin:0 0 10px; display:flex; align-items:center; gap:8px;
+}
+.category h2::after{ content:""; flex:1; height:1px; background:var(--line); }
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(min(96px, 28vw), 1fr));
+  gap:10px;
+}
+
+button.ing{
+  appearance:none; border:1.5px solid var(--line); background:var(--card);
+  border-radius:var(--radius); cursor:pointer;
+  min-height:var(--tap-min);
+  padding:10px 6px;
+  display:flex; flex-direction:column; align-items:center; gap:4px;
+  font:inherit; font-size:13px; color:var(--ink);
+  transition:transform .12s ease, border-color .12s ease, background .12s ease;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+  position:relative;
+}
+button.ing .emoji{ font-size:26px; line-height:1; }
+button.ing:active{ transform:scale(.94); }
+button.ing[aria-pressed="true"]{
+  background:#EAF3EC; border-color:var(--accent);
+  box-shadow:inset 0 0 0 1px var(--accent);
+}
+button.ing:disabled{ opacity:.4; cursor:not-allowed; }
+button.ing.excluded{ opacity:.35; text-decoration:line-through; }
+button.ing .featured-badge{
+  position:absolute; top:-6px; right:-6px; background:#E0632F; color:#fff;
+  font-size:9px; font-weight:900; border-radius:999px; padding:2px 6px; line-height:1.4;
+}
+
+@media (hover:hover) and (pointer:fine){
+  button.ing:not(:disabled):hover{ border-color:var(--accent); transform:translateY(-2px); }
+}
+
+/* ---------- きょうのまな板（スマホ: 下部固定バー） ---------- */
+.manaita-bar{
+  position:fixed; inset:auto 0 0 0; z-index:50;
+  background:linear-gradient(#F4E7D3,#EFDCBF);
+  border-top:3px solid var(--board-edge);
+  padding:10px clamp(12px,4vw,24px)
+          calc(10px + env(safe-area-inset-bottom, 0px));
+  box-shadow:0 -8px 24px rgba(60,40,10,.12);
+}
+.manaita-inner{ max-width:1100px; margin-inline:auto; display:flex; align-items:center; gap:12px; }
+
+.board{
+  flex:1; min-width:0;
+  background:
+    repeating-linear-gradient(92deg, transparent 0 46px, rgba(120,75,20,.08) 46px 48px),
+    linear-gradient(#E3AE6C,#D49B53);
+  border:2px solid var(--board-edge); border-radius:12px;
+  min-height:64px; padding:8px;
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+}
+.board .hint{ color:#8A5A22; font-size:12px; padding-inline:6px; }
+
+.chip{
+  appearance:none; border:0; cursor:pointer; font:inherit;
+  background:var(--card); color:var(--ink);
+  border-radius:999px; padding:8px 12px;
+  min-height:40px;
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:13px; font-weight:700;
+  box-shadow:0 2px 4px rgba(60,40,10,.18);
+  animation:drop .22s ease;
+}
+.chip .x{ color:var(--ink-soft); font-weight:400; }
+@keyframes drop{ from{ transform:translateY(-10px); opacity:0; } }
+
+.mode-row{ display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; }
+.mode-row button{
+  appearance:none; border:1.5px solid var(--board-edge); background:rgba(255,255,255,.55);
+  border-radius:999px; padding:5px 10px; font:inherit; font-size:11px; font-weight:700;
+  color:#6B4516; cursor:pointer; min-height:30px;
+}
+.mode-row button[aria-pressed="true"]{ background:var(--accent); color:#fff; border-color:var(--accent); }
+
+button.search{
+  appearance:none; border:0; cursor:pointer; font:inherit;
+  background:var(--accent); color:var(--accent-ink);
+  font-weight:900; font-size:15px; line-height:1.3;
+  border-radius:var(--radius);
+  min-height:64px; min-width:104px; padding:8px 14px;
+  font-family:"Zen Maru Gothic",sans-serif;
+  transition:transform .12s ease, opacity .12s ease;
+}
+button.search:disabled{ opacity:.45; cursor:not-allowed; }
+button.search:not(:disabled):active{ transform:scale(.96); }
+
+/* ---------- 結果エリア ---------- */
+.results{ margin-top:26px; scroll-margin-top:16px; }
+.recipe{
+  background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+  padding:16px; margin-top:12px;
+}
+.recipe h3{ margin:0 0 6px; font-size:17px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.recipe p{ margin:0; font-size:14px; color:var(--ink-soft); }
+.recipe .meta{ margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; }
+.badge{
+  display:inline-flex; align-items:center; font-size:11px; font-weight:900;
+  border-radius:999px; padding:3px 10px; line-height:1.6;
+}
+.badge.full{ background:#EAF3EC; color:var(--accent); }
+.badge.partial{ background:#FDF1E3; color:#B9682F; }
+.badge.ai{ background:#EEF1FD; color:#3D4FB0; }
+.badge.time{ background:#F3F0FA; color:#6A4FB0; }
+.badge.cal{ background:#FDEDEE; color:#B0413F; }
+
+.back{ background:none; border:0; color:var(--accent); font:inherit; font-weight:700;
+       cursor:pointer; padding:10px 0; min-height:var(--tap-min); }
+
+/* ---------- フィードバック ---------- */
+.feedback{ margin-top:28px; border-top:1px solid var(--line); padding-top:18px; }
+.feedback h4{ margin:0 0 8px; font-size:14px; }
+.stars{ display:flex; gap:4px; margin-bottom:8px; }
+.stars button{
+  appearance:none; border:0; background:none; font-size:26px; cursor:pointer; padding:2px;
+  filter:grayscale(1); opacity:.5;
+}
+.stars button.active{ filter:none; opacity:1; }
+.feedback textarea{
+  width:100%; border:1.5px solid var(--line); border-radius:var(--radius); padding:10px;
+  font:inherit; font-size:13px; resize:vertical; min-height:60px;
+}
+.feedback .submit{
+  margin-top:8px; appearance:none; border:0; background:var(--accent); color:#fff;
+  border-radius:999px; padding:8px 18px; min-height:40px; font:inherit; font-weight:700; cursor:pointer;
+}
+.feedback .thanks{ color:var(--accent); font-size:13px; font-weight:700; }
+
+/* ---------- トースト ---------- */
+.toast{
+  position:fixed; left:50%; bottom:calc(var(--bar-h) + 16px); transform:translate(-50%, 10px);
+  background:var(--ink); color:#fff; padding:10px 18px; border-radius:999px;
+  font-size:13px; z-index:80; opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease;
+}
+.toast.show{ opacity:1; transform:translate(-50%, 0); }
+
+footer.site{ margin-top:48px; padding-block:24px; color:var(--ink-soft); font-size:12px; text-align:center; }
+footer.site a{ color:var(--ink-soft); }
+
+/* ==========================================================
+   ★ 認証画面（ログイン/登録/パスワード再発行/初回パスワード変更/規約同意）
+   ========================================================== */
+.auth-screen{
+  min-height:100vh; display:flex; align-items:center; justify-content:center;
+  padding:clamp(16px,5vw,32px); background:var(--bg);
+}
+.auth-card{
+  width:100%; max-width:420px; background:var(--card); border:1px solid var(--line);
+  border-radius:20px; padding:clamp(20px,5vw,32px); box-shadow:0 10px 30px rgba(60,40,10,.08);
+}
+.auth-brand{ text-align:center; margin-bottom:18px; }
+.auth-brand .brand{ font-size:24px; }
+.auth-brand small{ display:block; color:var(--ink-soft); font-size:13px; margin-top:4px; }
+
+.auth-view h2{ font-size:17px; margin:0 0 6px; font-family:"Zen Maru Gothic",sans-serif; }
+.auth-view .hint{ color:var(--ink-soft); font-size:12px; margin:0 0 16px; }
+
+.field{ margin-bottom:14px; }
+.field label{ display:block; font-size:12px; font-weight:700; color:var(--ink-soft); margin-bottom:6px; }
+.field input{
+  width:100%; padding:12px; border:1.5px solid var(--line); border-radius:12px;
+  font:inherit; font-size:15px; min-height:var(--tap-min);
+}
+.field input:focus{ border-color:var(--accent); }
+
+.pw-field{ position:relative; }
+.pw-field input{ padding-right:64px; }
+.toggle-pw{
+  position:absolute; right:6px; top:6px; bottom:6px;
+  appearance:none; border:0; background:var(--bg); border-radius:8px; padding:0 12px;
+  font:inherit; font-size:12px; font-weight:700; color:var(--ink-soft); cursor:pointer;
+}
+
+.field-check{ display:flex; align-items:flex-start; gap:8px; margin-bottom:16px; font-size:12px; color:var(--ink-soft); }
+.field-check input{ margin-top:3px; width:16px; height:16px; }
+.field-check a{ color:var(--accent); font-weight:700; }
+
+.auth-submit{
+  width:100%; appearance:none; border:0; background:var(--accent); color:#fff;
+  border-radius:var(--radius); padding:12px; min-height:var(--tap-min);
+  font:inherit; font-weight:900; font-size:15px; cursor:pointer;
+  font-family:"Zen Maru Gothic",sans-serif;
+}
+.auth-submit:disabled{ opacity:.5; cursor:not-allowed; }
+
+.auth-error{
+  background:#FDEDEE; color:#B0413F; border-radius:10px; padding:10px 12px;
+  font-size:13px; margin-bottom:14px;
+}
+.auth-error.info{ background:#EAF3EC; color:#2F6B3C; }
+
+.auth-links{ margin-top:16px; text-align:center; font-size:13px; color:var(--ink-soft); }
+.auth-links a{ color:var(--accent); font-weight:700; cursor:pointer; text-decoration:underline; }
+.auth-links .sep{ margin:0 6px; }
+
+.terms-box{
+  max-height:260px; overflow-y:auto; border:1.5px solid var(--line); border-radius:12px;
+  padding:14px; font-size:12px; color:var(--ink-soft); margin-bottom:14px; background:var(--bg);
+}
+.terms-box h2{ font-size:14px; margin-top:14px; }
+.terms-box h2:first-child{ margin-top:0; }
+.terms-box p, .terms-box li{ font-size:12px; }
+
+/* ==========================================================
+   ★ タブ切り替え（食材で探す／みんなのレシピ／材料費）
+   ========================================================== */
+.tabs{
+  display:flex; gap:6px; margin-top:14px; border-bottom:1.5px solid var(--line);
+  overflow-x:auto; -webkit-overflow-scrolling:touch;
+}
+.tab-btn{
+  appearance:none; border:0; background:none; cursor:pointer; font:inherit;
+  padding:10px 14px; min-height:var(--tap-min); font-weight:700; font-size:13px;
+  color:var(--ink-soft); white-space:nowrap; border-bottom:3px solid transparent; margin-bottom:-1.5px;
+  touch-action:manipulation;
+}
+.tab-btn[aria-selected="true"]{ color:var(--accent); border-bottom-color:var(--accent); }
+.tab-panel{ margin-top:20px; }
+
+.btn-primary{
+  appearance:none; border:0; background:var(--accent); color:#fff; cursor:pointer;
+  border-radius:999px; padding:9px 18px; min-height:var(--tap-min); font:inherit; font-weight:700; font-size:13px;
+}
+.btn-secondary{
+  appearance:none; border:1.5px solid var(--line); background:var(--card); color:var(--ink-soft); cursor:pointer;
+  border-radius:999px; padding:9px 18px; min-height:var(--tap-min); font:inherit; font-weight:700; font-size:13px;
+}
+
+/* ---------- みんなのレシピ ---------- */
+.community-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.community-head h2{ margin:0; font-size:18px; }
+
+.recipe-form{
+  margin-top:16px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+  padding:16px;
+}
+.recipe-form textarea{
+  width:100%; padding:12px; border:1.5px solid var(--line); border-radius:12px; font:inherit; font-size:14px; resize:vertical;
+}
+.recipe-form input[type="file"]{ font-size:13px; }
+.photo-preview{
+  margin-top:8px; max-width:100%; max-height:220px; border-radius:12px; border:1px solid var(--line); display:block;
+}
+.row-buttons{ display:flex; gap:8px; margin-top:6px; flex-wrap:wrap; }
+.row-buttons .auth-submit{ width:auto; flex:1; min-width:140px; }
+
+.community-feed{ margin-top:18px; display:flex; flex-direction:column; gap:14px; }
+.recipe-card{
+  background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:16px;
+}
+.recipe-card header{ display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:12px; color:var(--ink-soft); }
+.recipe-card h3{ margin:8px 0 6px; font-size:16px; }
+.recipe-card .tags{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+.recipe-card .tag{
+  background:#EAF3EC; color:var(--accent); font-size:11px; font-weight:700; border-radius:999px; padding:3px 10px;
+}
+.recipe-card .dish-photo{
+  width:100%; max-height:320px; object-fit:cover; border-radius:12px; margin-bottom:10px; background:var(--bg);
+}
+.recipe-card .desc{ margin:0 0 6px; font-size:14px; color:var(--ink); white-space:pre-wrap; }
+.recipe-card details.steps{ font-size:13px; color:var(--ink-soft); margin-bottom:10px; }
+.recipe-card details.steps p{ white-space:pre-wrap; margin:8px 0 0; }
+.recipe-card details.steps summary{ cursor:pointer; font-weight:700; color:var(--accent); }
+
+.recipe-actions{ display:flex; gap:8px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:10px; }
+.recipe-actions button{
+  appearance:none; border:1.5px solid var(--line); background:var(--card); cursor:pointer;
+  border-radius:999px; padding:6px 12px; min-height:36px; font:inherit; font-size:12px; font-weight:700; color:var(--ink-soft);
+}
+.recipe-actions .like-btn[aria-pressed="true"]{ background:#FDEDEE; border-color:#E0632F; color:#E0632F; }
+.recipe-actions .report-btn{ margin-left:auto; }
+
+.comments{ margin-top:10px; border-top:1px dashed var(--line); padding-top:10px; }
+.comment-list{ display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
+.comment-item{ font-size:13px; }
+.comment-item .c-nick{ font-weight:700; color:var(--accent); margin-right:6px; }
+.comment-form{ display:flex; gap:8px; }
+.comment-form input{
+  flex:1; padding:9px 12px; border:1.5px solid var(--line); border-radius:999px; font:inherit; font-size:13px;
+}
+.comment-form button{
+  appearance:none; border:0; background:var(--accent); color:#fff; border-radius:999px;
+  padding:8px 16px; font:inherit; font-weight:700; font-size:12px; cursor:pointer;
+}
+
+/* ---------- 材料費 ---------- */
+.purchase-form{
+  margin-top:14px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+  padding:16px; display:grid; gap:12px; grid-template-columns:1fr; max-width:420px;
+}
+.cost-summary{ margin-top:20px; display:flex; gap:12px; flex-wrap:wrap; }
+.cost-card{
+  background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:16px 20px;
+  display:flex; flex-direction:column; gap:4px;
+}
+.cost-card .label{ font-size:12px; color:var(--ink-soft); font-weight:700; }
+.cost-card .value{ font-size:26px; font-weight:900; color:var(--accent); font-family:"Zen Maru Gothic",sans-serif; }
+
+.cost-table{ margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+.cost-row{
+  display:flex; justify-content:space-between; align-items:center; gap:10px;
+  background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 14px; font-size:13px;
+}
+.cost-row .name{ font-weight:700; }
+.cost-row .sub{ color:var(--ink-soft); font-size:11px; }
+.cost-empty{ color:var(--ink-soft); font-size:13px; padding:10px 2px; }
+
+/* ==========================================================
+   ★ タブレット（600px〜）
+   ========================================================== */
+@media (min-width:600px){
+  .grid{ grid-template-columns:repeat(auto-fill, minmax(108px, 1fr)); gap:12px; }
+  button.ing{ font-size:14px; }
+}
+
+/* ==========================================================
+   ★ PC（960px〜）
+   ========================================================== */
+@media (min-width:960px){
+  body.has-app-root{ padding-bottom:0; }
+  .layout{ display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:32px; align-items:start; }
+  .manaita-bar{
+    position:sticky; top:24px; inset:auto;
+    border:2px solid var(--board-edge); border-radius:16px;
+    box-shadow:0 6px 18px rgba(60,40,10,.10);
+    padding:16px;
+  }
+  .manaita-inner{ flex-direction:column; align-items:stretch; }
+  .manaita-title{ display:block !important; font-weight:900; font-size:15px;
+                  font-family:"Zen Maru Gothic",sans-serif; color:#6B4516; }
+  .board{ min-height:120px; align-content:flex-start; }
+  button.search{ width:100%; }
+  .toast{ bottom:24px; }
+}
+.layout{ display:block; }
+.manaita-title{ display:none; }
+
+@media (prefers-reduced-motion:reduce){
+  *{ animation:none !important; transition:none !important; }
+}
+
+:focus-visible{ outline:3px solid var(--accent); outline-offset:2px; }
+</style>
+</head>
+<body>
+
+<!-- ==========================================================
+     未ログイン画面（ログイン / 会員登録 / パスワード再発行 / 初回パスワード変更 / 規約同意）
+     ========================================================== -->
+<div id="authScreen" class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="brand">nokori-mono</div>
+      <small>冷蔵庫の残り物、ぜんぶ味方。（会員限定サービス）</small>
+    </div>
+
+    <!-- ログイン -->
+    <section class="auth-view" data-view="login">
+      <h2>ログイン</h2>
+      <p class="hint">登録したメールアドレスとパスワードでログインしてください。</p>
+      <p class="auth-error" hidden></p>
+      <form id="loginForm" novalidate>
+        <div class="field">
+          <label for="loginEmail">メールアドレス（ログインID）</label>
+          <input type="email" id="loginEmail" name="email" autocomplete="username" required>
+        </div>
+        <div class="field pw-field">
+          <label for="loginPassword">パスワード</label>
+          <input type="password" id="loginPassword" name="password" autocomplete="current-password" required>
+          <button type="button" class="toggle-pw" data-target="loginPassword" aria-pressed="false">表示</button>
+        </div>
+        <button type="submit" class="auth-submit">ログイン</button>
+      </form>
+      <p class="auth-links">
+        <a data-switch-view="forgot">パスワードを忘れた場合</a>
+        <span class="sep">|</span>
+        <a data-switch-view="register">はじめての方はこちら（会員登録）</a>
+      </p>
+      <p class="auth-links"><a href="legal/terms.html" target="_blank" rel="noopener">利用規約・免責事項</a></p>
+    </section>
+
+    <!-- 会員登録 -->
+    <section class="auth-view" data-view="register" hidden>
+      <h2>会員登録</h2>
+      <p class="hint">登録後、入力したメールアドレスに仮パスワードをお送りします。パスワードはログイン後に設定します。</p>
+      <p class="auth-error" hidden></p>
+      <form id="registerForm" novalidate>
+        <div class="field">
+          <label for="registerEmail">メールアドレス（ログインIDになります）</label>
+          <input type="email" id="registerEmail" name="email" autocomplete="email" required>
+        </div>
+        <div class="field">
+          <label for="registerNickname">ニックネーム（表示名・後で変更可）</label>
+          <input type="text" id="registerNickname" name="nickname" maxlength="20" required>
+        </div>
+        <div class="field">
+          <label for="registerFullName">氏名</label>
+          <input type="text" id="registerFullName" name="fullName" maxlength="60" required>
+        </div>
+        <label class="field-check">
+          <input type="checkbox" id="registerAgree" required>
+          <span><a href="legal/terms.html" target="_blank" rel="noopener">利用規約・免責事項</a>（無償のボランティア運営であること、利用者間のトラブルは当事者間で解決すること等を含みます）に同意して登録する</span>
+        </label>
+        <button type="submit" class="auth-submit" id="registerSubmit" disabled>登録する</button>
+      </form>
+      <p class="auth-links"><a data-switch-view="login">ログイン画面に戻る</a></p>
+    </section>
+
+    <!-- パスワード再発行 -->
+    <section class="auth-view" data-view="forgot" hidden>
+      <h2>パスワードを忘れた場合</h2>
+      <p class="hint">登録済みのメールアドレスを入力してください。仮パスワードを再発行してお送りします。</p>
+      <p class="auth-error" hidden></p>
+      <form id="forgotForm" novalidate>
+        <div class="field">
+          <label for="forgotEmail">メールアドレス</label>
+          <input type="email" id="forgotEmail" name="email" autocomplete="username" required>
+        </div>
+        <button type="submit" class="auth-submit">仮パスワードを再発行する</button>
+      </form>
+      <p class="auth-links"><a data-switch-view="login">ログイン画面に戻る</a></p>
+    </section>
+
+    <!-- 初回/再発行後のパスワード変更（必須） -->
+    <section class="auth-view" data-view="changePassword" hidden>
+      <h2>新しいパスワードの設定</h2>
+      <p class="hint">仮パスワードでのログインを確認しました。安全のため、新しいパスワード（8文字以上・英数字を含む）を設定してください。</p>
+      <p class="auth-error" hidden></p>
+      <form id="changePasswordForm" novalidate>
+        <div class="field pw-field">
+          <label for="newPassword">新しいパスワード</label>
+          <input type="password" id="newPassword" name="newPassword" autocomplete="new-password" required minlength="8">
+          <button type="button" class="toggle-pw" data-target="newPassword" aria-pressed="false">表示</button>
+        </div>
+        <div class="field pw-field">
+          <label for="newPasswordConfirm">新しいパスワード（確認）</label>
+          <input type="password" id="newPasswordConfirm" name="newPasswordConfirm" autocomplete="new-password" required minlength="8">
+          <button type="button" class="toggle-pw" data-target="newPasswordConfirm" aria-pressed="false">表示</button>
+        </div>
+        <button type="submit" class="auth-submit">このパスワードに設定する</button>
+      </form>
+    </section>
+
+    <!-- 規約同意（バージョン更新時に再表示） -->
+    <section class="auth-view" data-view="agreeTerms" hidden>
+      <h2>利用規約・免責事項への同意</h2>
+      <p class="hint">ご利用を続けるには、内容をご確認のうえ同意してください。</p>
+      <p class="auth-error" hidden></p>
+      <div class="terms-box" id="agreeTermsContent">読み込み中…</div>
+      <form id="agreeTermsForm" novalidate>
+        <label class="field-check">
+          <input type="checkbox" id="agreeTermsCheckbox">
+          <span>上記の利用規約・免責事項の内容を理解し、同意します</span>
+        </label>
+        <button type="submit" class="auth-submit" id="agreeTermsSubmit" disabled>同意して続ける</button>
+      </form>
+    </section>
+  </div>
+</div>
+
+<!-- ==========================================================
+     ログイン後の本編
+     ========================================================== -->
+<div id="appRoot" hidden>
+
+<header class="site container">
+  <div>
+    <h1 class="brand" id="brandTitle">nokori-mono<small id="brandSub">冷蔵庫の残り物、ぜんぶ味方。</small></h1>
+    <p class="lede" id="ledeText">冷蔵庫にある食材を<b>3つまで</b>タップ。下のまな板にのせたら、定番レシピを提案します。</p>
+  </div>
+  <div class="header-actions">
+    <button class="lang-toggle" id="langToggle" type="button" aria-label="言語切替">EN</button>
+    <div class="account-box">
+      <button id="accountBtn" type="button">👤 <span id="nicknameLabel"></span></button>
+      <div id="accountMenu" hidden>
+        <button type="button" id="editNicknameBtn">ニックネーム変更</button>
+        <button type="button" id="logoutBtn">ログアウト</button>
+      </div>
+      <form id="nicknameForm" class="nickname-form" hidden>
+        <label for="nicknameInput">新しいニックネーム</label>
+        <input type="text" id="nicknameInput" maxlength="20" required>
+        <div class="row">
+          <button type="submit" class="save">保存</button>
+          <button type="button" class="cancel" id="nicknameCancelBtn">キャンセル</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs container" id="mainTabs" role="tablist" aria-label="画面切り替え">
+  <button type="button" class="tab-btn" data-tab="ingredients" aria-selected="true" role="tab">🥬 食材で探す</button>
+  <button type="button" class="tab-btn" data-tab="community" aria-selected="false" role="tab">👥 みんなのレシピ</button>
+  <button type="button" class="tab-btn" data-tab="costs" aria-selected="false" role="tab">💰 材料費</button>
+</nav>
+
+<main class="container layout tab-panel" data-tab-panel="ingredients">
+  <!-- 左カラム: 食材選択 -->
+  <div id="picker">
+    <div class="toolbar" role="group" aria-label="フィルター">
+      <button type="button" id="timeFilterBtn" aria-pressed="false">⏱ <span id="timeFilterLabel">15分以内</span></button>
+      <button type="button" id="excludeToggleBtn" aria-pressed="false">🚫 <span id="excludeLabel">除外食材を指定</span></button>
+      <button type="button" class="camera-btn" id="cameraBtn">📷 <span id="cameraLabel">写真から選ぶ</span></button>
+      <input type="file" id="photoInput" accept="image/*" capture="environment">
+    </div>
+
+    <div id="rememberBanner" class="remember-banner" hidden>
+      <span id="rememberText">前回のまな板を再現しますか？</span>
+      <span class="actions">
+        <button class="restore" id="restoreBtn" type="button">再現する</button>
+        <button class="dismiss" id="dismissBannerBtn" type="button">閉じる</button>
+      </span>
+    </div>
+
+    <section class="category">
+      <h2 id="catProtein">お肉・たんぱく質</h2>
+      <div class="grid" data-cat="protein"></div>
+    </section>
+    <section class="category">
+      <h2 id="catVeg">野菜</h2>
+      <div class="grid" data-cat="veg"></div>
+    </section>
+    <section class="category">
+      <h2 id="catOther">主食・その他</h2>
+      <div class="grid" data-cat="other"></div>
+    </section>
+  </div>
+
+  <!-- 結果表示（検索後に切替） -->
+  <div id="resultView" class="results" hidden tabindex="-1">
+    <button class="back" id="backBtn">← 食材を選びなおす</button>
+    <div id="recipeList" aria-live="polite"></div>
+
+    <div class="feedback" id="feedbackBlock">
+      <h4 id="feedbackTitle">この提案は役に立ちましたか？</h4>
+      <div class="stars" id="stars" role="radiogroup" aria-label="評価">
+        <button type="button" data-v="1">★</button>
+        <button type="button" data-v="2">★</button>
+        <button type="button" data-v="3">★</button>
+        <button type="button" data-v="4">★</button>
+        <button type="button" data-v="5">★</button>
+      </div>
+      <textarea id="feedbackComment" maxlength="300" placeholder="ひとことコメント（任意）"></textarea><br>
+      <button class="submit" id="feedbackSubmit" type="button">送信</button>
+      <span class="thanks" id="feedbackThanks" hidden>ありがとうございました！</span>
+    </div>
+  </div>
+
+  <!-- 右カラム(PC) / 下部固定バー(スマホ): きょうのまな板 -->
+  <aside class="manaita-bar" aria-label="きょうのまな板">
+    <div class="manaita-inner">
+      <span class="manaita-title">きょうの まな板</span>
+      <div style="flex:1; min-width:0;">
+        <div class="mode-row">
+          <button type="button" id="modeNormalBtn" aria-pressed="true">この食材で作る</button>
+          <button type="button" id="modeAddOneBtn" aria-pressed="false">あと1品買い足す</button>
+        </div>
+        <div class="board" id="board" role="list" aria-label="選んだ食材（タップで外せます）">
+          <span class="hint" id="boardHint">ここに食材がのります（タップで外せます）</span>
+        </div>
+      </div>
+      <button class="search" id="searchBtn" disabled>この3つで<br>検索</button>
+    </div>
+  </aside>
+</main>
+
+<!-- ==========================================================
+     みんなのレシピ（会員間レシピ共有：投稿・いいね・コメント・通報）
+     ========================================================== -->
+<section class="container tab-panel" data-tab-panel="community" hidden>
+  <div class="community-head">
+    <h2>みんなのレシピ</h2>
+    <button type="button" class="btn-primary" id="newRecipeBtn">＋ レシピを投稿する</button>
+  </div>
+  <p class="hint" style="margin-top:6px;">他の会員が投稿したレシピを見たり、あなたのレシピを共有できます。写真は自動的に縮小してから送信されます。</p>
+
+  <form id="recipeForm" class="recipe-form" hidden novalidate>
+    <div class="field">
+      <label for="recipeTitle">タイトル</label>
+      <input type="text" id="recipeTitle" maxlength="60" required>
+    </div>
+    <div class="field">
+      <label for="recipeIngredients">使った食材（カンマ区切り、最大10個）</label>
+      <input type="text" id="recipeIngredients" placeholder="例: 豚肉, キャベツ, 卵">
+    </div>
+    <div class="field">
+      <label for="recipeDescription">紹介文</label>
+      <textarea id="recipeDescription" maxlength="800" rows="2" placeholder="どんな料理か、ひとことで"></textarea>
+    </div>
+    <div class="field">
+      <label for="recipeSteps">作り方</label>
+      <textarea id="recipeSteps" maxlength="800" rows="4" placeholder="手順を書いてください"></textarea>
+    </div>
+    <div class="field">
+      <label for="recipePhoto">料理の写真（任意）</label>
+      <input type="file" id="recipePhoto" accept="image/*">
+      <img id="recipePhotoPreview" class="photo-preview" hidden alt="プレビュー">
+      <p class="hint" id="recipePhotoHint"></p>
+    </div>
+    <p class="auth-error" id="recipeFormError" hidden></p>
+    <div class="row-buttons">
+      <button type="submit" class="auth-submit" id="recipeSubmitBtn">投稿する</button>
+      <button type="button" class="btn-secondary" id="recipeCancelBtn">キャンセル</button>
+    </div>
+  </form>
+
+  <div id="communityFeed" class="community-feed"></div>
+  <p class="cost-empty" id="communityEmpty" hidden>まだ投稿がありません。最初のレシピを投稿してみましょう。</p>
+</section>
+
+<!-- ==========================================================
+     材料費（今週使った材料費・材料ごとの購入費・みんなの相場）
+     ========================================================== -->
+<section class="container tab-panel" data-tab-panel="costs" hidden>
+  <h2>材料費</h2>
+  <p class="hint">買った食材と値段を記録すると、今週の合計や食材ごとの内訳、他の会員の平均価格（相場）が見られます。</p>
+
+  <form id="purchaseForm" class="purchase-form" novalidate>
+    <div class="field">
+      <label for="purchaseIngredient">食材名</label>
+      <input type="text" id="purchaseIngredient" maxlength="30" required>
+    </div>
+    <div class="field">
+      <label for="purchasePrice">価格（円）</label>
+      <input type="number" id="purchasePrice" min="0" max="100000" step="1" required>
+    </div>
+    <div class="field">
+      <label for="purchaseDate">購入日</label>
+      <input type="date" id="purchaseDate">
+    </div>
+    <p class="auth-error" id="purchaseFormError" hidden></p>
+    <button type="submit" class="auth-submit" style="width:auto;">記録する</button>
+  </form>
+
+  <div class="cost-summary">
+    <div class="cost-card">
+      <span class="label">今週の合計（<span id="costWeekStart"></span>週）</span>
+      <span class="value" id="costWeekTotal">¥0</span>
+    </div>
+  </div>
+
+  <h3>食材ごとの内訳（今週）</h3>
+  <div id="costByIngredient" class="cost-table"></div>
+
+  <h3>みんなの相場（直近90日の平均）</h3>
+  <div id="costCommunityAverage" class="cost-table"></div>
+
+  <h3>最近の記録</h3>
+  <div id="costRecent" class="cost-table"></div>
+</section>
+
+<footer class="site" id="footerText">
+  nokori-mono — たべものを、さいごまでおいしく。<br>
+  <a href="legal/terms.html" target="_blank" rel="noopener">利用規約・免責事項</a>（無償・ボランティア運営です）
+</footer>
+
+</div><!-- /#appRoot -->
+
+<div class="toast" id="toast"></div>
+
+<script>document.body.classList.add("has-app-root");</script>
+<script src="js/auth.js" defer></script>
+<script src="js/app.js" defer></script>
+<script src="js/community.js" defer></script>
+<script src="js/costs.js" defer></script>
+</body>
+</html>

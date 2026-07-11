@@ -1,0 +1,16 @@
+{
+  "name": "nokori-mono｜冷蔵庫の残り物からレシピ提案",
+  "short_name": "nokori-mono",
+  "description": "冷蔵庫の残り物食材を3つ選ぶだけで、定番料理のレシピを提案するアプリ",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FBF6EE",
+  "theme_color": "#2F6B3C",
+  "lang": "ja",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
