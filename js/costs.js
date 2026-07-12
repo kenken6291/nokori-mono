@@ -120,6 +120,7 @@
      ========================================================== */
   let pendingPhoto = null; // { base64, mimeType }
   let pendingOriginalPhoto = null; // { base64, mimeType } 縮小前の元画像（自動読み取り失敗時の拡大表示用）
+  let keepOriginalPhotoVisible = false; // trueの間は記録後もresetPurchaseForm()で元写真パネルを消さない（同じレシートから複数件続けて入力する用）
   let editingPurchaseId = null;
   let currentRecent = [];
 
@@ -135,6 +136,10 @@
       field.hidden = false;
       label.textContent = "グラム数";
       $("purchaseQuantity").step = "0.1";
+    } else if (unit === "liter") {
+      field.hidden = false;
+      label.textContent = "リットル数";
+      $("purchaseQuantity").step = "0.01";
     } else {
       field.hidden = true;
       $("purchaseQuantity").value = "";
@@ -147,14 +152,18 @@
     $("purchasePhotoPreview").removeAttribute("src");
     $("purchasePhotoHint").textContent = "";
     pendingPhoto = null;
-    pendingOriginalPhoto = null;
     editingPurchaseId = null;
     $("purchaseSubmitBtn").textContent = "記録する";
     $("purchaseCancelBtn").hidden = true;
     updateQuantityFieldVisibility();
     setFormError("");
     hideScanResult();
-    hideOriginalPhotoPanel();
+    // 「表示を維持する」がONの間は、元写真パネルとその画像データを消さない
+    // （同じレシートから複数の商品を続けて手入力できるようにするため）
+    if (!keepOriginalPhotoVisible) {
+      pendingOriginalPhoto = null;
+      hideOriginalPhotoPanel();
+    }
   }
 
   async function startEditPurchase(purchaseId) {
@@ -192,6 +201,8 @@
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     $("purchasePhotoHint").textContent = "写真を処理しています…";
+    keepOriginalPhotoVisible = false;
+    if ($("purchaseOriginalPhotoKeepBtn")) $("purchaseOriginalPhotoKeepBtn").setAttribute("aria-pressed", "false");
     hideOriginalPhotoPanel();
     pendingOriginalPhoto = null;
 
@@ -229,6 +240,7 @@
   function unitLabel(unit) {
     if (unit === "count") return "個";
     if (unit === "gram") return "g";
+    if (unit === "liter") return "L";
     return "";
   }
 
@@ -281,6 +293,22 @@
     if (!panel || !img) return;
     panel.hidden = true;
     img.removeAttribute("src");
+  }
+
+  // 「表示を維持する」ボタン：ONの間はresetPurchaseForm()を実行しても元写真パネルを消さない
+  function onToggleKeepOriginalPhoto() {
+    keepOriginalPhotoVisible = !keepOriginalPhotoVisible;
+    const btn = $("purchaseOriginalPhotoKeepBtn");
+    if (btn) btn.setAttribute("aria-pressed", String(keepOriginalPhotoVisible));
+  }
+
+  // 「閉じる」ボタン：表示維持がONでも強制的にパネルを閉じる
+  function onCloseOriginalPhotoPanel() {
+    keepOriginalPhotoVisible = false;
+    const btn = $("purchaseOriginalPhotoKeepBtn");
+    if (btn) btn.setAttribute("aria-pressed", "false");
+    pendingOriginalPhoto = null;
+    hideOriginalPhotoPanel();
   }
 
   async function onCopyScanResult() {
@@ -337,7 +365,7 @@
       }
       if (data.ingredientName) $("purchaseIngredient").value = data.ingredientName;
       if (data.price != null) $("purchasePrice").value = data.price;
-      if (data.unit === "count" || data.unit === "gram") {
+      if (data.unit === "count" || data.unit === "gram" || data.unit === "liter") {
         $("purchaseUnit").value = data.unit;
         updateQuantityFieldVisibility();
         if (data.quantity != null) $("purchaseQuantity").value = data.quantity;
@@ -404,10 +432,16 @@
     container.innerHTML = items.map(rowFn).join("");
   }
 
+  function unitPriceLabel(unit) {
+    if (unit === "count") return "1個あたり";
+    if (unit === "liter") return "1Lあたり";
+    return "100gあたり";
+  }
+
   function recentRowHtml(r) {
     const dateStr = escapeHtml(String(r.purchasedAt || "").slice(0, 10));
     const unitPriceHtml = r.unitPrice != null
-      ? `<span class="unit-price">${r.unit === "count" ? "1個あたり" : "100gあたり"} ${yen(r.unitPrice)}</span>`
+      ? `<span class="unit-price">${unitPriceLabel(r.unit)} ${yen(r.unitPrice)}</span>`
       : "";
     const photoHtml = r.hasPhoto
       ? `<img class="cost-row-thumb" loading="lazy" alt="${escapeHtml(r.ingredientName)}の写真" data-photo-id="${escapeHtml(r.id)}">`
@@ -508,6 +542,8 @@
     $("purchaseCancelBtn").addEventListener("click", resetPurchaseForm);
     $("costRecent").addEventListener("click", onRecentClick);
     if ($("purchaseScanCopyBtn")) $("purchaseScanCopyBtn").addEventListener("click", onCopyScanResult);
+    if ($("purchaseOriginalPhotoKeepBtn")) $("purchaseOriginalPhotoKeepBtn").addEventListener("click", onToggleKeepOriginalPhoto);
+    if ($("purchaseOriginalPhotoCloseBtn")) $("purchaseOriginalPhotoCloseBtn").addEventListener("click", onCloseOriginalPhotoPanel);
     updateQuantityFieldVisibility();
 
     window.addEventListener("nokori-tab-shown", (e) => {

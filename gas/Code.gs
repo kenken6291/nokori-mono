@@ -801,7 +801,7 @@ const RECEIPT_SCHEMA = {
           name: { type: "STRING" },
           price: { type: "INTEGER" },
           quantity: { type: "NUMBER" },
-          unit: { type: "STRING", enum: ["count", "gram", "none"] },
+          unit: { type: "STRING", enum: ["count", "gram", "liter", "none"] },
         },
         required: ["name", "price"],
       },
@@ -959,6 +959,8 @@ function handleScanReceipt(body) {
     "price（支払った価格、円、整数。個別の商品価格であり小計・合計ではない）を読み取ってください。" +
     "可能であれば数量も読み取り、個数がわかる場合はunitを\"count\"にしてquantityに個数を、" +
     "グラム数がわかる場合はunitを\"gram\"にしてquantityにグラム数を入れてください。" +
+    "リットル数がわかる場合はunitを\"liter\"にしてquantityにリットル数を入れてください" +
+    "（ml表記の場合は1000で割ってリットルに変換してください）。" +
     "数量が読み取れない場合はunitを\"none\"にしてください。" +
     "商品が1つも読み取れない場合はitemsを空配列にしてください。" +
     "必ず指定のJSONスキーマのみで回答してください。";
@@ -994,7 +996,7 @@ function handleScanReceipt(body) {
   const items = rawItems.map((it) => {
     const ingredientName = String((it && it.name) || "").trim().slice(0, MAX_INGREDIENT_NAME_LEN);
     const price = Number(it && it.price);
-    const unit = it && (it.unit === "count" || it.unit === "gram") ? it.unit : "";
+    const unit = it && (it.unit === "count" || it.unit === "gram" || it.unit === "liter") ? it.unit : "";
     const quantity = Number(it && it.quantity);
     return {
       ingredientName: ingredientName,
@@ -1440,12 +1442,13 @@ function handlePhoto(params) {
 // ==========================================================
 const MAX_INGREDIENT_NAME_LEN = 30;
 
-// 数量の単位を検証する。"count"（個数）または "gram"（グラム）のみ許可。未指定なら単価計算をスキップする。
+// 数量の単位を検証する。"count"（個数）・"gram"（グラム）・"liter"（リットル）のみ許可。未指定なら単価計算をスキップする。
 function validateQuantity(unit, quantity) {
-  if (unit !== "count" && unit !== "gram") return "";
+  if (unit !== "count" && unit !== "gram" && unit !== "liter") return "";
   if (!Number.isFinite(quantity) || quantity <= 0) return "invalid_quantity";
   if (unit === "count" && quantity > 9999) return "invalid_quantity";
   if (unit === "gram" && quantity > 100000) return "invalid_quantity";
+  if (unit === "liter" && quantity > 1000) return "invalid_quantity";
   return null;
 }
 
@@ -1457,7 +1460,7 @@ function handleAddPurchase(body) {
   const ingredientId = String(body.ingredientId || "").trim().slice(0, MAX_LEN);
   const ingredientName = String(body.ingredientName || "").trim().slice(0, MAX_INGREDIENT_NAME_LEN);
   const price = Number(body.price);
-  const unit = body.unit === "count" || body.unit === "gram" ? body.unit : "";
+  const unit = body.unit === "count" || body.unit === "gram" || body.unit === "liter" ? body.unit : "";
   const quantity = Number(body.quantity);
 
   if (!ingredientName && !ingredientId) return { error: "ingredient_required" };
@@ -1523,7 +1526,7 @@ function handleUpdatePurchase(body) {
   const ingredientId = String(body.ingredientId || "").trim().slice(0, MAX_LEN);
   const ingredientName = String(body.ingredientName || "").trim().slice(0, MAX_INGREDIENT_NAME_LEN);
   const price = Number(body.price);
-  const unit = body.unit === "count" || body.unit === "gram" ? body.unit : "";
+  const unit = body.unit === "count" || body.unit === "gram" || body.unit === "liter" ? body.unit : "";
   const quantity = Number(body.quantity);
 
   if (!ingredientName && !ingredientId) return { error: "ingredient_required" };
@@ -1608,12 +1611,13 @@ function getWeekStart(date) {
 
 // ---------- action=myPurchases（GET）----------
 // 自分の今週の合計・材料ごとの内訳・直近購入履歴、および全会員の直近90日の平均価格（みんなの相場）を返す
-// 価格・数量・単位から単価を計算する。単位が個数なら1個あたり、グラムなら100gあたりの価格を返す。
+// 価格・数量・単位から単価を計算する。単位が個数なら1個あたり、グラムなら100gあたり、リットルなら1Lあたりの価格を返す。
 // 単位未設定（従来データ含む）ならnullを返す。
 function computeUnitPrice(price, quantity, unit) {
   if (!Number.isFinite(quantity) || quantity <= 0) return null;
   if (unit === "count") return price / quantity;
   if (unit === "gram") return (price / quantity) * 100;
+  if (unit === "liter") return price / quantity;
   return null;
 }
 

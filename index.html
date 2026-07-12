@@ -463,6 +463,9 @@ footer.site a{ color:var(--ink-soft); }
 .original-photo-panel img{
   width:100%; border-radius:12px; border:1px solid var(--line); display:block; margin-top:10px; background:var(--bg);
 }
+.original-photo-actions{ display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+.original-photo-actions button{ padding:8px 12px; font-size:12px; min-height:36px; }
+.original-photo-actions button[aria-pressed="true"]{ background:#EAF3EC; border-color:var(--accent); color:var(--accent); }
 .cost-summary{ margin-top:20px; display:flex; gap:12px; flex-wrap:wrap; }
 .cost-card{
   background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:16px 20px;
@@ -826,6 +829,7 @@ footer.site a{ color:var(--ink-soft); }
           <option value="">指定しない</option>
           <option value="count">個数</option>
           <option value="gram">グラム</option>
+          <option value="liter">リットル</option>
         </select>
       </div>
       <div class="field" id="purchaseQuantityField" hidden>
@@ -857,8 +861,12 @@ footer.site a{ color:var(--ink-soft); }
 
   <div class="original-photo-panel" id="purchaseOriginalPhotoPanel" hidden>
     <h3>元の写真（拡大表示）</h3>
-    <p class="hint">自動読み取りができなかったため、元の写真を見ながら手入力してください。</p>
+    <p class="hint">自動読み取りができなかったため、元の写真を見ながら手入力してください。1枚のレシートから複数の商品を続けて登録する場合は「表示を維持する」を押すと、記録するたびに写真が消えなくなります。</p>
     <img id="purchaseOriginalPhotoImg" alt="レシート・値札の元の写真">
+    <div class="original-photo-actions">
+      <button type="button" class="btn-secondary" id="purchaseOriginalPhotoKeepBtn" aria-pressed="false">📌 表示を維持する</button>
+      <button type="button" class="btn-secondary" id="purchaseOriginalPhotoCloseBtn">閉じる</button>
+    </div>
   </div>
   </div>
 
