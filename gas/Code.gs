@@ -164,6 +164,12 @@ function doPost(e) {
       case "addpurchase":
         result = handleAddPurchase(body);
         break;
+      case "updatecommunityrecipe":
+        result = handleUpdateCommunityRecipe(body);
+        break;
+      case "deletecommunityrecipe":
+        result = handleDeleteCommunityRecipe(body);
+        break;
       default:
         result = { error: "unknown action" };
     }
@@ -1032,12 +1038,88 @@ function handlePostCommunityRecipe(body) {
   return { ok: true, id: id };
 }
 
+// ---------- action=updateCommunityRecipe（本人の投稿のみ編集可）----------
+function handleUpdateCommunityRecipe(body) {
+  const auth = requireSession(body);
+  if (!auth.ok) return { error: auth.error };
+
+  const recipeId = String(body.recipeId || "");
+  if (!recipeId) return { error: "recipeId required" };
+
+  const recipe = findRowById("COMMUNITY_RECIPES", recipeId);
+  const st = recipe ? String(recipe.data.status || "active") : "";
+  if (!recipe || st === "hidden" || st === "deleted") return { error: "not_found" };
+  if (String(recipe.data.email || "").toLowerCase() !== auth.email.toLowerCase()) return { error: "forbidden" };
+
+  const title = String(body.title || "").trim().slice(0, MAX_RECIPE_TITLE_LEN);
+  const description = String(body.description || "").trim().slice(0, MAX_RECIPE_TEXT_LEN);
+  const steps = String(body.steps || "").trim().slice(0, MAX_RECIPE_TEXT_LEN);
+  const ingredients = sanitizeList(body.ingredients, MAX_RECIPE_INGREDIENTS, MAX_LEN);
+
+  if (!title) return { error: "title_required" };
+  if (!description && !steps) return { error: "description_required" };
+
+  const updates = {
+    title: title,
+    ingredients: ingredients.join(";"),
+    description: description,
+    steps: steps,
+    updatedAt: new Date().toISOString(),
+  };
+
+  // 写真の差し替え（任意。photoBase64が送られてきた場合のみ）
+  if (body.photoBase64) {
+    let newPhotoId;
+    try {
+      newPhotoId = savePhotoIfProvided(body.photoBase64, body.mimeType);
+    } catch (err) {
+      return { error: String((err && err.message) || err) };
+    }
+    const oldFileId = String(recipe.data.photoFileId || "");
+    if (oldFileId) {
+      try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch (err2) { /* 旧写真の削除失敗は無視 */ }
+    }
+    updates.photoFileId = newPhotoId;
+  } else if (body.removePhoto) {
+    const oldFileId = String(recipe.data.photoFileId || "");
+    if (oldFileId) {
+      try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch (err2) { /* 無視 */ }
+    }
+    updates.photoFileId = "";
+  }
+
+  updateRowByIndex("COMMUNITY_RECIPES", recipe.rowIndex, recipe.headers, updates);
+  return { ok: true };
+}
+
+// ---------- action=deleteCommunityRecipe（本人の投稿のみ削除可。ソフトデリート）----------
+function handleDeleteCommunityRecipe(body) {
+  const auth = requireSession(body);
+  if (!auth.ok) return { error: auth.error };
+
+  const recipeId = String(body.recipeId || "");
+  if (!recipeId) return { error: "recipeId required" };
+
+  const recipe = findRowById("COMMUNITY_RECIPES", recipeId);
+  if (!recipe) return { error: "not_found" };
+  if (String(recipe.data.email || "").toLowerCase() !== auth.email.toLowerCase()) return { error: "forbidden" };
+
+  updateRowByIndex("COMMUNITY_RECIPES", recipe.rowIndex, recipe.headers, {
+    status: "deleted",
+    updatedAt: new Date().toISOString(),
+  });
+  return { ok: true };
+}
+
 // ---------- action=communityRecipes（GET）----------
 function handleListCommunityRecipes(auth, params) {
   const ingredientFilter = params && params.ingredient ? String(params.ingredient) : "";
   const limit = Math.min(Number((params && params.limit) || 30) || 30, 100);
 
-  const rows = sheetToObjects("COMMUNITY_RECIPES").filter((r) => String(r.status || "active") !== "hidden");
+  const rows = sheetToObjects("COMMUNITY_RECIPES").filter((r) => {
+    const st = String(r.status || "active");
+    return st !== "hidden" && st !== "deleted";
+  });
   const likedSet = getLikedRecipeIdsForUser(auth.email);
 
   let list = rows.map((r) => ({
@@ -1203,7 +1285,10 @@ function handlePhoto(params) {
 
   try {
     const file = DriveApp.getFileById(fileId);
-    return file.getBlob();
+    const rawBlob = file.getBlob();
+    // DriveのFile由来のBlobをそのまま返すとdoGetが「サポートされている戻り値の型ではない」と
+    // 拒否することがあるため、バイト列から素のBlobを作り直してから返す。
+    return Utilities.newBlob(rawBlob.getBytes(), rawBlob.getContentType() || "image/jpeg", file.getName());
   } catch (err) {
     return jsonOutput({ error: "not_found" });
   }
