@@ -93,6 +93,28 @@
     return window.CSS && CSS.escape ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, "\\$&");
   }
 
+  // レシート自動読み取り用に、縮小せず元ファイルのままBase64化する（縮小すると小さい文字が潰れて
+  // 読み取り精度が落ちるため）。保存用の写真は引き続きresizePhotoで縮小したものを使う。
+  const MAX_RECEIPT_SCAN_FILE_BYTES = 12 * 1024 * 1024; // 元画像の読み取りに使う上限（サーバー側の上限と合わせて余裕を持たせる）
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      if (file.size > MAX_RECEIPT_SCAN_FILE_BYTES) {
+        reject(new Error("file_too_large"));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = String(reader.result || "");
+        const base64 = dataUrl.split(",")[1] || "";
+        const mimeType = file.type && file.type.indexOf("image/") === 0 ? file.type : "image/jpeg";
+        resolve({ base64, mimeType });
+      };
+      reader.onerror = () => reject(new Error("file_read_failed"));
+      reader.readAsDataURL(file);
+    });
+  }
+
   /* ==========================================================
      記録フォーム（新規・編集共用）
      ========================================================== */
@@ -166,29 +188,41 @@
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     $("purchasePhotoHint").textContent = "写真を処理しています…";
+
+    // 保存用のプレビュー・添付データは従来通り縮小する
     let resized;
     try {
       resized = await resizePhoto(file);
       pendingPhoto = { base64: resized.base64, mimeType: resized.mimeType };
       $("purchasePhotoPreview").src = "data:" + resized.mimeType + ";base64," + resized.base64;
       $("purchasePhotoPreview").hidden = false;
-      $("purchasePhotoHint").textContent = `自動縮小しました（${resized.width}×${resized.height}px, 約${resized.approxKB}KB）。レシートを読み取っています…`;
     } catch (err) {
       pendingPhoto = null;
       $("purchasePhotoHint").textContent = "写真の読み込みに失敗しました。別の写真をお試しください。";
       return;
     }
-    await scanReceiptAndFill(resized);
+
+    const baseHint = `自動縮小しました（${resized.width}×${resized.height}px, 約${resized.approxKB}KB）。`;
+    $("purchasePhotoHint").textContent = baseHint + "レシートを読み取っています…";
+
+    // レシートの自動読み取りは縮小前の元画像で行う（縮小すると小さい文字が潰れて読み取り精度が落ちるため）。
+    // 読み取り用の元画像は送信のみに使い、保存はしない（保存されるのは上のresizePhoto版のみ）。
+    try {
+      const original = await fileToBase64(file);
+      await scanReceiptAndFill(original, baseHint);
+    } catch (err) {
+      $("purchasePhotoHint").textContent = baseHint + "写真のサイズが大きすぎて自動読み取りできませんでした。内容を手入力してください。";
+    }
   }
 
-  // レシート・値札の写真から食材名・価格・数量をGemini Visionで自動抽出し、フォームへ自動入力する。
-  // あくまで下書きの自動入力であり、登録自体はユーザーが内容を確認して「記録する」を押すまで行われない。
-  async function scanReceiptAndFill(resized) {
-    const baseHint = `自動縮小しました（${resized.width}×${resized.height}px, 約${resized.approxKB}KB）。`;
+  // レシート・値札の写真（縮小前の元画像）から食材名・価格・数量をGemini Visionで自動抽出し、
+  // フォームへ自動入力する。あくまで下書きの自動入力であり、登録自体はユーザーが内容を確認して
+  // 「記録する」を押すまで行われない。
+  async function scanReceiptAndFill(original, baseHint) {
     try {
       const data = await window.NokoriAuth.authedPost("scanReceipt", {
-        imageBase64: resized.base64,
-        mimeType: resized.mimeType,
+        imageBase64: original.base64,
+        mimeType: original.mimeType,
       });
       if (!data || data.error) {
         $("purchasePhotoHint").textContent = baseHint + "レシートの自動読み取りはできませんでした。内容を手入力してください。";

@@ -933,17 +933,25 @@ function handleScanReceipt(body) {
   const imageBase64 = String(body.imageBase64 || "");
   const mimeType = String(body.mimeType || "image/jpeg");
   if (!imageBase64) return { error: "imageBase64 required" };
-  if (imageBase64.length > 6 * 1024 * 1024) return { error: "image too large" };
+  // 読み取り精度を優先し、縮小前の元画像をそのまま受け取る前提で上限を大きめに設定している
+  // （保存用の写真はフロント側で縮小されるため、こちらの上限には影響しない）
+  if (imageBase64.length > 18 * 1024 * 1024) return { error: "image too large" };
 
   if (!checkAndIncrementQuota("scanReceipt:" + auth.email, Math.min(getMaxDailyCalls(), 100))) {
     return { error: "quota_exceeded" };
   }
 
-  const prompt = "この画像はレシートまたは値札の写真です。購入した食材・商品の名前と、支払った価格（円、整数）を読み取ってください。" +
-    "複数の商品が写っている場合は、最も金額の大きい商品、または合計金額と代表的な商品名を選んでください。" +
+  const prompt = "この画像はレシートまたは値札の写真です。撮影角度が傾いている、光が反射している、" +
+    "感熱紙で印字が薄れている等の場合でも、文字の形や周囲の文脈（単価×数量の並びなど）から可能な限り推測して読み取ってください。" +
+    "レシートには店舗名・住所・電話番号・レシート番号・日時・各商品名と価格・小計・消費税・合計・支払方法・お釣りなど" +
+    "複数の行が含まれることがあります。店舗名・住所・電話番号・レシート番号・日時・小計・税額・合計・支払方法・お釣りの行は" +
+    "商品名として扱わず、実際に購入した食材・商品の行だけを対象にしてください。" +
+    "対象になる商品行が複数ある場合は、その中で最も価格の高い商品を1つ選び、その商品名と、支払った価格（円、整数。" +
+    "個別の商品価格であり小計・合計ではない）を読み取ってください。" +
     "可能であれば数量も読み取り、個数がわかる場合はunitを\"count\"にしてquantityに個数を、" +
     "グラム数がわかる場合はunitを\"gram\"にしてquantityにグラム数を入れてください。" +
-    "数量が読み取れない場合はunitを\"none\"にしてください。価格がまったく読み取れない場合はpriceを0にしてください。" +
+    "数量が読み取れない場合はunitを\"none\"にしてください。" +
+    "商品名・価格のいずれも全く読み取れない場合に限り、ingredientNameを空文字、priceを0にしてください。" +
     "必ず指定のJSONスキーマのみで、商品名は日本語で回答してください。";
 
   let text;
