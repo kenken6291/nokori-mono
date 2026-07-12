@@ -138,7 +138,7 @@
     setFormError("");
   }
 
-  function startEditRecipe(recipeId) {
+  async function startEditRecipe(recipeId) {
     const r = currentRecipes.find((x) => x.id === recipeId);
     if (!r) return;
     resetRecipeForm();
@@ -156,9 +156,15 @@
     renderIngredientPicker();
 
     if (r.hasPhoto) {
-      $("recipePhotoPreview").src = window.NokoriAuth.getPhotoUrl(r.id);
-      $("recipePhotoPreview").hidden = false;
-      $("recipePhotoHint").textContent = "既存の写真です（変更する場合のみ新しい写真を選んでください）";
+      $("recipePhotoHint").textContent = "既存の写真を読み込み中…";
+      const uri = await window.NokoriAuth.getPhotoDataUri(r.id);
+      if (uri) {
+        $("recipePhotoPreview").src = uri;
+        $("recipePhotoPreview").hidden = false;
+        $("recipePhotoHint").textContent = "既存の写真です（変更する場合のみ新しい写真を選んでください）";
+      } else {
+        $("recipePhotoHint").textContent = "";
+      }
     }
 
     $("recipeSubmitBtn").textContent = "更新する";
@@ -229,7 +235,7 @@
   function recipeCardHtml(r) {
     const tags = r.ingredients.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("");
     const photoHtml = r.hasPhoto
-      ? `<img class="dish-photo" loading="lazy" alt="${escapeHtml(r.title)}の写真" src="${window.NokoriAuth.getPhotoUrl(r.id)}">`
+      ? `<img class="dish-photo" loading="lazy" alt="${escapeHtml(r.title)}の写真" data-photo-id="${escapeHtml(r.id)}">`
       : "";
     const stepsHtml = r.steps
       ? `<details class="steps"><summary>作り方を見る</summary><p>${escapeHtml(r.steps)}</p></details>`
@@ -276,9 +282,24 @@
       feedEl.innerHTML = currentRecipes.map(recipeCardHtml).join("");
       emptyEl.hidden = currentRecipes.length > 0;
       feedLoaded = true;
+      loadCardPhotos(currentRecipes, feedEl);
     } catch (err) {
       // 静かに失敗（オフライン等）。次回タブ表示時に再試行される
     }
+  }
+
+  // カード表示後、写真付きレシピだけ非同期にBase64画像を取得してimgのsrcへ差し込む
+  function loadCardPhotos(recipes, containerEl) {
+    recipes.filter((r) => r.hasPhoto).forEach(async (r) => {
+      const uri = await window.NokoriAuth.getPhotoDataUri(r.id);
+      if (!uri) return;
+      const img = containerEl.querySelector(`img[data-photo-id="${cssEscape(r.id)}"]`);
+      if (img) img.src = uri;
+    });
+  }
+
+  function cssEscape(s) {
+    return window.CSS && CSS.escape ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, "\\$&");
   }
 
   /* ==========================================================
@@ -326,7 +347,7 @@
     }
 
     if (e.target.closest(".edit-btn")) {
-      startEditRecipe(recipeId);
+      await startEditRecipe(recipeId);
       return;
     }
 
