@@ -277,14 +277,31 @@
     textarea.value = "";
   }
 
+  // フォーム横の参考写真パネルの案内文（用途によって出し分ける）
+  const SCAN_FAILED_HINT = "自動読み取りができなかったため、元の写真を見ながら手入力してください。1枚のレシートから複数の商品を続けて登録する場合は「表示を維持する」を押すと、記録するたびに写真が消えなくなります。";
+  const RECENT_PHOTO_HINT = "過去の記録の写真です。同じレシートからほかの商品も続けて登録する場合は「表示を維持する」を押すと、記録するたびに写真が消えなくなります。";
+
+  function setOriginalPhotoHint(text) {
+    const hint = $("purchaseOriginalPhotoHint");
+    if (hint && text) hint.textContent = text;
+  }
+
+  // フォーム横へ画像（data:URI）を拡大表示する共通関数。自動読み取り失敗時の元画像表示と、
+  // 「最近の記録」のサムネイルクリックによる再表示の両方から呼ばれる。
+  function showOriginalPhotoPanelUri(uri, hintText) {
+    const panel = $("purchaseOriginalPhotoPanel");
+    const img = $("purchaseOriginalPhotoImg");
+    if (!panel || !img || !uri) return;
+    img.src = uri;
+    setOriginalPhotoHint(hintText);
+    panel.hidden = false;
+  }
+
   // 自動読み取りが1件も読み取れなかった場合に、フォーム横へ縮小前の元画像を拡大表示する
   // （読み取り用に送信した元画像をそのまま使う。手入力時に見やすくするための参考表示であり、保存はしない）。
   function showOriginalPhotoPanel(original) {
-    const panel = $("purchaseOriginalPhotoPanel");
-    const img = $("purchaseOriginalPhotoImg");
-    if (!panel || !img || !original) return;
-    img.src = "data:" + original.mimeType + ";base64," + original.base64;
-    panel.hidden = false;
+    if (!original) return;
+    showOriginalPhotoPanelUri("data:" + original.mimeType + ";base64," + original.base64, SCAN_FAILED_HINT);
   }
 
   function hideOriginalPhotoPanel() {
@@ -476,6 +493,18 @@
     if (!row) return;
     const purchaseId = row.dataset.id;
     if (!purchaseId) return;
+
+    // サムネイルをタップ/クリックすると、フォーム横の参考写真パネルに拡大表示する
+    // （読み込み済みならそのまま、未読み込みなら取得してから表示する）
+    if (e.target.closest(".cost-row-thumb")) {
+      const thumb = e.target.closest(".cost-row-thumb");
+      let uri = thumb.getAttribute("src") || "";
+      if (!uri) {
+        uri = await window.NokoriAuth.getPhotoDataUri(purchaseId, "purchase");
+      }
+      if (uri) showOriginalPhotoPanelUri(uri, RECENT_PHOTO_HINT);
+      return;
+    }
 
     if (e.target.closest(".cost-edit-btn")) {
       await startEditPurchase(purchaseId);

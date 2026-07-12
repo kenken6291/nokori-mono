@@ -486,7 +486,9 @@ footer.site a{ color:var(--ink-soft); }
 .cost-row-main{ display:flex; flex-direction:column; gap:2px; }
 .cost-row-thumb{
   width:44px; height:44px; object-fit:cover; border-radius:8px; background:var(--bg); border:1px solid var(--line);
+  cursor:pointer;
 }
+.cost-row-thumb:hover{ border-color:var(--accent); }
 .cost-row-actions{ display:flex; gap:6px; margin-left:auto; }
 .cost-row-actions button{
   appearance:none; border:1.5px solid var(--line); background:var(--card); cursor:pointer;
@@ -860,8 +862,8 @@ footer.site a{ color:var(--ink-soft); }
   </form>
 
   <div class="original-photo-panel" id="purchaseOriginalPhotoPanel" hidden>
-    <h3>元の写真（拡大表示）</h3>
-    <p class="hint">自動読み取りができなかったため、元の写真を見ながら手入力してください。1枚のレシートから複数の商品を続けて登録する場合は「表示を維持する」を押すと、記録するたびに写真が消えなくなります。</p>
+    <h3>参考写真（拡大表示）</h3>
+    <p class="hint" id="purchaseOriginalPhotoHint">自動読み取りができなかったため、元の写真を見ながら手入力してください。1枚のレシートから複数の商品を続けて登録する場合は「表示を維持する」を押すと、記録するたびに写真が消えなくなります。</p>
     <img id="purchaseOriginalPhotoImg" alt="レシート・値札の元の写真">
     <div class="original-photo-actions">
       <button type="button" class="btn-secondary" id="purchaseOriginalPhotoKeepBtn" aria-pressed="false">📌 表示を維持する</button>
