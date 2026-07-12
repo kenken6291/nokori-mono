@@ -68,12 +68,17 @@
     return data;
   }
 
-  // コミュニティレシピの写真URLを組み立てる（GAS自身のaction=photoを経由する非公開プロキシ）。
-  // GAS_ENDPOINTをこのモジュール外に漏らさないため、community.js からはこの関数経由で利用する。
-  function getPhotoUrl(recipeId) {
-    if (!GAS_ENDPOINT) return "";
-    const qs = new URLSearchParams({ action: "photo", recipeId: recipeId, session: getSession() });
-    return `${GAS_ENDPOINT}?${qs.toString()}`;
+  // コミュニティレシピの写真を取得し、<img>にそのまま設定できるdata:URIを返す
+  // （GAS自身のaction=photoを経由する非公開プロキシ。Blobを直接返すdoGetは環境によってエラーになるため
+  // JSON+Base64方式に統一し、ここでdata:URIへ変換する）。
+  async function getPhotoDataUri(recipeId) {
+    try {
+      const data = await authedGet("photo", { recipeId });
+      if (!data || data.error || !data.photoBase64) return "";
+      return `data:${data.mimeType || "image/jpeg"};base64,${data.photoBase64}`;
+    } catch (e) {
+      return "";
+    }
   }
   function handleAuthError(data) {
     if (data && (data.error === "unauthorized" || data.error === "session_expired" || data.error === "account_disabled")) {
@@ -382,5 +387,5 @@
   document.addEventListener("DOMContentLoaded", init);
 
   // app.js / community.js / costs.js から使う公開インターフェース
-  window.NokoriAuth = { authedPost, authedGet, getProfile, getSession, getPhotoUrl };
+  window.NokoriAuth = { authedPost, authedGet, getProfile, getSession, getPhotoDataUri };
 })();
