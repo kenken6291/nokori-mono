@@ -68,12 +68,13 @@
     return data;
   }
 
-  // コミュニティレシピの写真を取得し、<img>にそのまま設定できるdata:URIを返す
+  // コミュニティレシピ／材料費の写真を取得し、<img>にそのまま設定できるdata:URIを返す
   // （GAS自身のaction=photoを経由する非公開プロキシ。Blobを直接返すdoGetは環境によってエラーになるため
   // JSON+Base64方式に統一し、ここでdata:URIへ変換する）。
-  async function getPhotoDataUri(recipeId) {
+  // type: "recipe"（既定, みんなのレシピ）または "purchase"（材料費の記録。本人のみ閲覧可）
+  async function getPhotoDataUri(id, type) {
     try {
-      const data = await authedGet("photo", { recipeId });
+      const data = await authedGet("photo", { id, type: type || "recipe" });
       if (!data || data.error || !data.photoBase64) return "";
       return `data:${data.mimeType || "image/jpeg"};base64,${data.photoBase64}`;
     } catch (e) {

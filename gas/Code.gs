@@ -23,7 +23,10 @@
  * - photo(GET)     : session必須。fileIdをCommunityRecipesシートから検証したうえでBlobを直接返す
  *                     （Driveの共有リンクを公開しないためのプロキシ。詳細はSETUP_GUIDE.md）
  * - togglelike / commentrecipe / reportrecipe : いいね・コメント・通報。通報は運営者がシートを見て手動対応
- * - addpurchase / mypurchases : 自分の材料費記録と、今週の合計・食材ごとの内訳・全会員の平均価格（相場）を返す
+ * - addpurchase / updatepurchase / deletepurchase / mypurchases : 材料費の記録（食材名・価格・数量(個数/グラム)・
+ *   写真任意）の追加・編集・削除（本人のみ、ソフトデリート）。mypurchasesは今週の合計・食材ごとの内訳・
+ *   1個あたり/100gあたりの単価・全会員の平均価格（相場）を返す。写真はCommunityRecipesと同じ仕組み
+ *   （action=photo, type=purchase）で本人のみ閲覧できる
  *
  * ▼ 初回セットアップ（詳細は ../SETUP_GUIDE.md）
  * スクリプト プロパティに以下を設定:
@@ -169,6 +172,12 @@ function doPost(e) {
         break;
       case "deletecommunityrecipe":
         result = handleDeleteCommunityRecipe(body);
+        break;
+      case "updatepurchase":
+        result = handleUpdatePurchase(body);
+        break;
+      case "deletepurchase":
+        result = handleDeletePurchase(body);
         break;
       default:
         result = { error: "unknown action" };
@@ -1268,27 +1277,42 @@ function handleReportRecipe(body) {
   return { ok: true };
 }
 
-// ---------- action=photo（GET。JSONではなく画像Blobを直接返す）----------
+// ---------- action=photo（GET。Base64エンコードしたJSONとして返す）----------
 // Driveの共有リンクを一切公開しないためのプロキシ。session検証を通過した会員だけが取得できる。
+// 注: Apps ScriptのdoGetはBlobを直接返すとランタイムによって「サポートされている戻り値の型ではない」
+// というエラーになることがあるため、確実に動作するJSON(Base64)方式に統一している。
+// フロント側(js/auth.js の getPhotoDataUri)がこれを data:URI に変換して <img> に設定する。
+// type=recipe（既定）: CommunityRecipesの写真。全会員が閲覧可（削除以外）。
+// type=purchase      : Purchasesの写真（材料費の記録に添付したレシート等）。本人のみ閲覧可（家計情報のため）。
 function handlePhoto(params) {
   const auth = requireSession({ session: params.session });
   if (!auth.ok) return jsonOutput({ error: auth.error });
 
-  const recipeId = String(params.recipeId || "");
-  if (!recipeId) return jsonOutput({ error: "recipeId required" });
+  const type = String(params.type || "recipe");
+  const id = String(params.id || params.recipeId || "");
+  if (!id) return jsonOutput({ error: "id required" });
 
-  const recipe = findRowById("COMMUNITY_RECIPES", recipeId);
-  if (!recipe || recipe.data.status === "hidden") return jsonOutput({ error: "not_found" });
-
-  const fileId = String(recipe.data.photoFileId || "");
+  let fileId = "";
+  if (type === "purchase") {
+    const purchase = findRowById("PURCHASES", id);
+    if (!purchase || String(purchase.data.status || "active") === "deleted") return jsonOutput({ error: "not_found" });
+    if (String(purchase.data.email || "").toLowerCase() !== auth.email.toLowerCase()) return jsonOutput({ error: "forbidden" });
+    fileId = String(purchase.data.photoFileId || "");
+  } else {
+    const recipe = findRowById("COMMUNITY_RECIPES", id);
+    if (!recipe || recipe.data.status === "hidden") return jsonOutput({ error: "not_found" });
+    fileId = String(recipe.data.photoFileId || "");
+  }
   if (!fileId) return jsonOutput({ error: "no_photo" });
 
   try {
     const file = DriveApp.getFileById(fileId);
-    const rawBlob = file.getBlob();
-    // DriveのFile由来のBlobをそのまま返すとdoGetが「サポートされている戻り値の型ではない」と
-    // 拒否することがあるため、バイト列から素のBlobを作り直してから返す。
-    return Utilities.newBlob(rawBlob.getBytes(), rawBlob.getContentType() || "image/jpeg", file.getName());
+    const blob = file.getBlob();
+    return jsonOutput({
+      ok: true,
+      mimeType: blob.getContentType() || "image/jpeg",
+      photoBase64: Utilities.base64Encode(blob.getBytes()),
+    });
   } catch (err) {
     return jsonOutput({ error: "not_found" });
   }
@@ -1299,6 +1323,15 @@ function handlePhoto(params) {
 // ==========================================================
 const MAX_INGREDIENT_NAME_LEN = 30;
 
+// 数量の単位を検証する。"count"（個数）または "gram"（グラム）のみ許可。未指定なら単価計算をスキップする。
+function validateQuantity(unit, quantity) {
+  if (unit !== "count" && unit !== "gram") return "";
+  if (!Number.isFinite(quantity) || quantity <= 0) return "invalid_quantity";
+  if (unit === "count" && quantity > 9999) return "invalid_quantity";
+  if (unit === "gram" && quantity > 100000) return "invalid_quantity";
+  return null;
+}
+
 // ---------- action=addPurchase ----------
 function handleAddPurchase(body) {
   const auth = requireSession(body);
@@ -1307,12 +1340,25 @@ function handleAddPurchase(body) {
   const ingredientId = String(body.ingredientId || "").trim().slice(0, MAX_LEN);
   const ingredientName = String(body.ingredientName || "").trim().slice(0, MAX_INGREDIENT_NAME_LEN);
   const price = Number(body.price);
+  const unit = body.unit === "count" || body.unit === "gram" ? body.unit : "";
+  const quantity = Number(body.quantity);
 
   if (!ingredientName && !ingredientId) return { error: "ingredient_required" };
   if (!Number.isFinite(price) || price < 0 || price > 100000) return { error: "invalid_price" };
+  if (unit) {
+    const qErr = validateQuantity(unit, quantity);
+    if (qErr) return { error: qErr };
+  }
 
   if (!checkAndIncrementQuota("purchase:" + auth.email, 100)) {
     return { error: "quota_exceeded" };
+  }
+
+  let photoFileId = "";
+  try {
+    photoFileId = savePhotoIfProvided(body.photoBase64, body.mimeType);
+  } catch (err) {
+    return { error: String((err && err.message) || err) };
   }
 
   let purchasedAt = new Date();
@@ -1322,13 +1368,115 @@ function handleAddPurchase(body) {
   }
 
   const id = Utilities.getUuid();
-  appendLog("PURCHASES", [
-    id, auth.email, auth.nickname, ingredientId,
-    ingredientName || ingredientId, Math.round(price),
-    purchasedAt.toISOString(),
-  ]);
+  const now = new Date().toISOString();
+  const sh = openSheetByKey("PURCHASES");
+  const headers = sh.getDataRange().getValues()[0].map((h) => String(h).trim());
+  const rowMap = {
+    id: id,
+    email: auth.email,
+    nickname: auth.nickname,
+    ingredientId: ingredientId,
+    ingredientName: ingredientName || ingredientId,
+    price: Math.round(price),
+    quantity: unit ? quantity : "",
+    unit: unit,
+    photoFileId: photoFileId,
+    status: "active",
+    purchasedAt: purchasedAt.toISOString(),
+    updatedAt: now,
+  };
+  sh.appendRow(headers.map((h) => (rowMap[h] !== undefined ? rowMap[h] : "")));
 
   return { ok: true, id: id };
+}
+
+// ---------- action=updatePurchase（本人の記録のみ編集可）----------
+function handleUpdatePurchase(body) {
+  const auth = requireSession(body);
+  if (!auth.ok) return { error: auth.error };
+
+  const purchaseId = String(body.purchaseId || "");
+  if (!purchaseId) return { error: "purchaseId required" };
+
+  const purchase = findRowById("PURCHASES", purchaseId);
+  const st = purchase ? String(purchase.data.status || "active") : "";
+  if (!purchase || st === "deleted") return { error: "not_found" };
+  if (String(purchase.data.email || "").toLowerCase() !== auth.email.toLowerCase()) return { error: "forbidden" };
+
+  const ingredientId = String(body.ingredientId || "").trim().slice(0, MAX_LEN);
+  const ingredientName = String(body.ingredientName || "").trim().slice(0, MAX_INGREDIENT_NAME_LEN);
+  const price = Number(body.price);
+  const unit = body.unit === "count" || body.unit === "gram" ? body.unit : "";
+  const quantity = Number(body.quantity);
+
+  if (!ingredientName && !ingredientId) return { error: "ingredient_required" };
+  if (!Number.isFinite(price) || price < 0 || price > 100000) return { error: "invalid_price" };
+  if (unit) {
+    const qErr = validateQuantity(unit, quantity);
+    if (qErr) return { error: qErr };
+  }
+
+  const updates = {
+    ingredientId: ingredientId,
+    ingredientName: ingredientName || ingredientId,
+    price: Math.round(price),
+    quantity: unit ? quantity : "",
+    unit: unit,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (body.purchasedAt) {
+    const d = new Date(body.purchasedAt);
+    if (!isNaN(d)) updates.purchasedAt = d.toISOString();
+  }
+
+  // 写真の差し替え（任意。photoBase64が送られてきた場合のみ）
+  if (body.photoBase64) {
+    let newPhotoId;
+    try {
+      newPhotoId = savePhotoIfProvided(body.photoBase64, body.mimeType);
+    } catch (err) {
+      return { error: String((err && err.message) || err) };
+    }
+    const oldFileId = String(purchase.data.photoFileId || "");
+    if (oldFileId) {
+      try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch (err2) { /* 旧写真の削除失敗は無視 */ }
+    }
+    updates.photoFileId = newPhotoId;
+  } else if (body.removePhoto) {
+    const oldFileId = String(purchase.data.photoFileId || "");
+    if (oldFileId) {
+      try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch (err2) { /* 無視 */ }
+    }
+    updates.photoFileId = "";
+  }
+
+  updateRowByIndex("PURCHASES", purchase.rowIndex, purchase.headers, updates);
+  return { ok: true };
+}
+
+// ---------- action=deletePurchase（本人の記録のみ削除可。ソフトデリート）----------
+function handleDeletePurchase(body) {
+  const auth = requireSession(body);
+  if (!auth.ok) return { error: auth.error };
+
+  const purchaseId = String(body.purchaseId || "");
+  if (!purchaseId) return { error: "purchaseId required" };
+
+  const purchase = findRowById("PURCHASES", purchaseId);
+  if (!purchase) return { error: "not_found" };
+  if (String(purchase.data.email || "").toLowerCase() !== auth.email.toLowerCase()) return { error: "forbidden" };
+
+  const oldFileId = String(purchase.data.photoFileId || "");
+  if (oldFileId) {
+    try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch (err2) { /* 無視 */ }
+  }
+
+  updateRowByIndex("PURCHASES", purchase.rowIndex, purchase.headers, {
+    status: "deleted",
+    updatedAt: new Date().toISOString(),
+  });
+  return { ok: true };
 }
 
 // 週の開始（月曜0時）を返す
@@ -1343,8 +1491,17 @@ function getWeekStart(date) {
 
 // ---------- action=myPurchases（GET）----------
 // 自分の今週の合計・材料ごとの内訳・直近購入履歴、および全会員の直近90日の平均価格（みんなの相場）を返す
+// 価格・数量・単位から単価を計算する。単位が個数なら1個あたり、グラムなら100gあたりの価格を返す。
+// 単位未設定（従来データ含む）ならnullを返す。
+function computeUnitPrice(price, quantity, unit) {
+  if (!Number.isFinite(quantity) || quantity <= 0) return null;
+  if (unit === "count") return price / quantity;
+  if (unit === "gram") return (price / quantity) * 100;
+  return null;
+}
+
 function handleMyPurchases(auth) {
-  const all = sheetToObjects("PURCHASES");
+  const all = sheetToObjects("PURCHASES").filter((r) => String(r.status || "active") !== "deleted");
   const weekStart = getWeekStart(new Date());
 
   const mine = all.filter((r) => String(r.email || "").toLowerCase() === auth.email.toLowerCase());
@@ -1387,11 +1544,22 @@ function handleMyPurchases(auth) {
     .slice()
     .sort((a, b) => (a.purchasedAt < b.purchasedAt ? 1 : -1))
     .slice(0, 20)
-    .map((r) => ({
-      ingredientName: String(r.ingredientName || r.ingredientId || ""),
-      price: Number(r.price) || 0,
-      purchasedAt: String(r.purchasedAt || ""),
-    }));
+    .map((r) => {
+      const price = Number(r.price) || 0;
+      const quantityRaw = r.quantity;
+      const quantity = quantityRaw !== "" && quantityRaw != null && Number.isFinite(Number(quantityRaw)) ? Number(quantityRaw) : null;
+      const unit = String(r.unit || "");
+      return {
+        id: String(r.id || ""),
+        ingredientName: String(r.ingredientName || r.ingredientId || ""),
+        price: price,
+        quantity: quantity,
+        unit: unit,
+        unitPrice: computeUnitPrice(price, quantity, unit),
+        hasPhoto: !!String(r.photoFileId || ""),
+        purchasedAt: String(r.purchasedAt || ""),
+      };
+    });
 
   return {
     weekStart: Utilities.formatDate(weekStart, "Asia/Tokyo", "yyyy-MM-dd"),

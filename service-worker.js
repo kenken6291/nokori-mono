@@ -54,7 +54,4 @@ self.addEventListener("fetch", (event) => {
     );
   } else {
     event.respondWith(
-      fetch(req).catch(() => caches.match(req))
-    );
-  }
-});
+      fetch(req).catc

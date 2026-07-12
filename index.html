@@ -462,12 +462,27 @@ footer.site a{ color:var(--ink-soft); }
 
 .cost-table{ margin-top:10px; display:flex; flex-direction:column; gap:6px; }
 .cost-row{
-  display:flex; justify-content:space-between; align-items:center; gap:10px;
+  display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;
   background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 14px; font-size:13px;
 }
 .cost-row .name{ font-weight:700; }
 .cost-row .sub{ color:var(--ink-soft); font-size:11px; }
+.cost-row .unit-price{ display:block; color:var(--ink-soft); font-size:11px; }
 .cost-empty{ color:var(--ink-soft); font-size:13px; padding:10px 2px; }
+.cost-row-main{ display:flex; flex-direction:column; gap:2px; }
+.cost-row-thumb{
+  width:44px; height:44px; object-fit:cover; border-radius:8px; background:var(--bg); border:1px solid var(--line);
+}
+.cost-row-actions{ display:flex; gap:6px; margin-left:auto; }
+.cost-row-actions button{
+  appearance:none; border:1.5px solid var(--line); background:var(--card); cursor:pointer;
+  border-radius:999px; padding:4px 10px; min-height:30px; font:inherit; font-size:12px; font-weight:700; color:var(--ink-soft);
+}
+.purchase-form .qty-row{ display:flex; gap:8px; align-items:flex-end; }
+.purchase-form .qty-row .field{ flex:1; }
+.purchase-form select{
+  width:100%; padding:12px; border:1.5px solid var(--line); border-radius:12px; font:inherit; font-size:14px; background:var(--card);
+}
 
 /* ==========================================================
    ★ タブレット（600px〜）
@@ -788,12 +803,35 @@ footer.site a{ color:var(--ink-soft); }
       <label for="purchasePrice">価格（円）</label>
       <input type="number" id="purchasePrice" min="0" max="100000" step="1" required>
     </div>
+    <div class="qty-row">
+      <div class="field">
+        <label for="purchaseUnit">数量の単位（任意・単価表示用）</label>
+        <select id="purchaseUnit">
+          <option value="">指定しない</option>
+          <option value="count">個数</option>
+          <option value="gram">グラム</option>
+        </select>
+      </div>
+      <div class="field" id="purchaseQuantityField" hidden>
+        <label for="purchaseQuantity" id="purchaseQuantityLabel">数量</label>
+        <input type="number" id="purchaseQuantity" min="0" max="100000" step="0.1">
+      </div>
+    </div>
     <div class="field">
       <label for="purchaseDate">購入日</label>
       <input type="date" id="purchaseDate">
     </div>
+    <div class="field">
+      <label for="purchasePhoto">レシート・写真（任意）</label>
+      <input type="file" id="purchasePhoto" accept="image/*">
+      <img id="purchasePhotoPreview" class="photo-preview" hidden alt="プレビュー">
+      <p class="hint" id="purchasePhotoHint"></p>
+    </div>
     <p class="auth-error" id="purchaseFormError" hidden></p>
-    <button type="submit" class="auth-submit" style="width:auto;">記録する</button>
+    <div class="row-buttons">
+      <button type="submit" class="auth-submit" id="purchaseSubmitBtn" style="width:auto;">記録する</button>
+      <button type="button" class="btn-secondary" id="purchaseCancelBtn" hidden>キャンセル</button>
+    </div>
   </form>
 
   <div class="cost-summary">
