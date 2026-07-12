@@ -119,6 +119,7 @@
      記録フォーム（新規・編集共用）
      ========================================================== */
   let pendingPhoto = null; // { base64, mimeType }
+  let pendingOriginalPhoto = null; // { base64, mimeType } 縮小前の元画像（自動読み取り失敗時の拡大表示用）
   let editingPurchaseId = null;
   let currentRecent = [];
 
@@ -146,12 +147,14 @@
     $("purchasePhotoPreview").removeAttribute("src");
     $("purchasePhotoHint").textContent = "";
     pendingPhoto = null;
+    pendingOriginalPhoto = null;
     editingPurchaseId = null;
     $("purchaseSubmitBtn").textContent = "記録する";
     $("purchaseCancelBtn").hidden = true;
     updateQuantityFieldVisibility();
     setFormError("");
     hideScanResult();
+    hideOriginalPhotoPanel();
   }
 
   async function startEditPurchase(purchaseId) {
@@ -189,6 +192,8 @@
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     $("purchasePhotoHint").textContent = "写真を処理しています…";
+    hideOriginalPhotoPanel();
+    pendingOriginalPhoto = null;
 
     // 保存用のプレビュー・添付データは従来通り縮小する
     let resized;
@@ -207,9 +212,11 @@
     $("purchasePhotoHint").textContent = baseHint + "レシートを読み取っています…";
 
     // レシートの自動読み取りは縮小前の元画像で行う（縮小すると小さい文字が潰れて読み取り精度が落ちるため）。
-    // 読み取り用の元画像は送信のみに使い、保存はしない（保存されるのは上のresizePhoto版のみ）。
+    // 読み取り用の元画像は送信には使うが保存はしない（保存されるのは上のresizePhoto版のみ）。読み取りに
+    // 失敗した場合のみ、手入力の参考になるようこの元画像をフォーム横に拡大表示する（showOriginalPhotoPanel）。
     try {
       const original = await fileToBase64(file);
+      pendingOriginalPhoto = original;
       await scanReceiptAndFill(original, baseHint);
     } catch (err) {
       $("purchasePhotoHint").textContent = baseHint + "写真のサイズが大きすぎて自動読み取りできませんでした。内容を手入力してください。";
@@ -258,6 +265,24 @@
     textarea.value = "";
   }
 
+  // 自動読み取りが1件も読み取れなかった場合に、フォーム横へ縮小前の元画像を拡大表示する
+  // （読み取り用に送信した元画像をそのまま使う。手入力時に見やすくするための参考表示であり、保存はしない）。
+  function showOriginalPhotoPanel(original) {
+    const panel = $("purchaseOriginalPhotoPanel");
+    const img = $("purchaseOriginalPhotoImg");
+    if (!panel || !img || !original) return;
+    img.src = "data:" + original.mimeType + ";base64," + original.base64;
+    panel.hidden = false;
+  }
+
+  function hideOriginalPhotoPanel() {
+    const panel = $("purchaseOriginalPhotoPanel");
+    const img = $("purchaseOriginalPhotoImg");
+    if (!panel || !img) return;
+    panel.hidden = true;
+    img.removeAttribute("src");
+  }
+
   async function onCopyScanResult() {
     const textarea = $("purchaseScanResultText");
     const btn = $("purchaseScanCopyBtn");
@@ -300,12 +325,14 @@
       if (!data || data.error) {
         $("purchasePhotoHint").textContent = baseHint + "レシートの自動読み取りはできませんでした。内容を手入力してください。";
         hideScanResult();
+        showOriginalPhotoPanel(original);
         return;
       }
       const items = Array.isArray(data.items) ? data.items : [];
       if (!items.length) {
         $("purchasePhotoHint").textContent = baseHint + "レシートから商品を読み取れませんでした。内容を手入力してください。";
         hideScanResult();
+        showOriginalPhotoPanel(original);
         return;
       }
       if (data.ingredientName) $("purchaseIngredient").value = data.ingredientName;
@@ -316,6 +343,7 @@
         if (data.quantity != null) $("purchaseQuantity").value = data.quantity;
       }
       showScanResult(items);
+      hideOriginalPhotoPanel();
       const suffix = items.length > 1
         ? `レシートから${items.length}件の商品を読み取りました。金額が最も大きい商品をフォームに自動入力しています。他の商品は下の一覧からコピーしてスプレッドシートに貼り付けられます。内容を確認してから「記録する」を押してください（読み取り精度は完全ではありません）。`
         : "レシートから読み取りました。内容を確認してから「記録する」を押してください（読み取り精度は完全ではありません）。";
@@ -323,6 +351,7 @@
     } catch (err) {
       $("purchasePhotoHint").textContent = baseHint + "レシートの自動読み取りに失敗しました。内容を手入力してください。";
       hideScanResult();
+      showOriginalPhotoPanel(original);
     }
   }
 

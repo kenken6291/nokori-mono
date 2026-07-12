@@ -448,9 +448,20 @@ footer.site a{ color:var(--ink-soft); }
 }
 
 /* ---------- 材料費 ---------- */
+.purchase-layout{ display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; margin-top:14px; }
 .purchase-form{
-  margin-top:14px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+  background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
   padding:16px; display:grid; gap:12px; grid-template-columns:1fr; max-width:420px;
+  flex:1 1 280px; margin-top:0;
+}
+.original-photo-panel{
+  flex:1 1 240px; max-width:420px; background:var(--card); border:1px solid var(--line);
+  border-radius:var(--radius); padding:16px;
+}
+.original-photo-panel h3{ margin:0 0 4px; font-size:14px; }
+.original-photo-panel .hint{ margin:0; }
+.original-photo-panel img{
+  width:100%; border-radius:12px; border:1px solid var(--line); display:block; margin-top:10px; background:var(--bg);
 }
 .cost-summary{ margin-top:20px; display:flex; gap:12px; flex-wrap:wrap; }
 .cost-card{
@@ -798,6 +809,7 @@ footer.site a{ color:var(--ink-soft); }
   <h2>材料費</h2>
   <p class="hint">買った食材と値段を記録すると、今週の合計や食材ごとの内訳、他の会員の平均価格（相場）が見られます。レシート・値札の写真をアップロードすると、食材名・価格・数量を自動で読み取って入力します（読み取り精度は完全ではないため、記録前に内容をご確認ください）。</p>
 
+  <div class="purchase-layout">
   <form id="purchaseForm" class="purchase-form" novalidate>
     <div class="field">
       <label for="purchaseIngredient">食材名</label>
@@ -842,6 +854,13 @@ footer.site a{ color:var(--ink-soft); }
       <button type="button" class="btn-secondary" id="purchaseCancelBtn" hidden>キャンセル</button>
     </div>
   </form>
+
+  <div class="original-photo-panel" id="purchaseOriginalPhotoPanel" hidden>
+    <h3>元の写真（拡大表示）</h3>
+    <p class="hint">自動読み取りができなかったため、元の写真を見ながら手入力してください。</p>
+    <img id="purchaseOriginalPhotoImg" alt="レシート・値札の元の写真">
+  </div>
+  </div>
 
   <div class="cost-summary">
     <div class="cost-card">
