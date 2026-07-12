@@ -483,6 +483,10 @@ footer.site a{ color:var(--ink-soft); }
 .purchase-form select{
   width:100%; padding:12px; border:1.5px solid var(--line); border-radius:12px; font:inherit; font-size:14px; background:var(--card);
 }
+.scan-result-textarea{
+  width:100%; padding:10px; border:1.5px solid var(--line); border-radius:12px;
+  font:12px/1.6 ui-monospace,"SF Mono",Menlo,Consolas,monospace; resize:vertical; background:var(--bg); margin-bottom:8px;
+}
 
 /* ==========================================================
    ★ タブレット（600px〜）
@@ -826,6 +830,11 @@ footer.site a{ color:var(--ink-soft); }
       <input type="file" id="purchasePhoto" accept="image/*">
       <img id="purchasePhotoPreview" class="photo-preview" hidden alt="プレビュー">
       <p class="hint" id="purchasePhotoHint"></p>
+    </div>
+    <div class="field" id="purchaseScanResultField" hidden>
+      <label for="purchaseScanResultText">読み取った商品一覧（コピーしてスプレッドシートに貼り付けできます）</label>
+      <textarea id="purchaseScanResultText" class="scan-result-textarea" rows="4" readonly></textarea>
+      <button type="button" class="btn-secondary" id="purchaseScanCopyBtn">コピーする</button>
     </div>
     <p class="auth-error" id="purchaseFormError" hidden></p>
     <div class="row-buttons">

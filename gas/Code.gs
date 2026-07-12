@@ -793,12 +793,21 @@ const VISION_SCHEMA = {
 const RECEIPT_SCHEMA = {
   type: "OBJECT",
   properties: {
-    ingredientName: { type: "STRING" },
-    price: { type: "INTEGER" },
-    quantity: { type: "NUMBER" },
-    unit: { type: "STRING", enum: ["count", "gram", "none"] },
+    items: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          name: { type: "STRING" },
+          price: { type: "INTEGER" },
+          quantity: { type: "NUMBER" },
+          unit: { type: "STRING", enum: ["count", "gram", "none"] },
+        },
+        required: ["name", "price"],
+      },
+    },
   },
-  required: ["ingredientName", "price"],
+  required: ["items"],
 };
 
 // ---------- action=suggest（通常提案／あと1品モード）※要ログイン ----------
@@ -945,14 +954,14 @@ function handleScanReceipt(body) {
     "感熱紙で印字が薄れている等の場合でも、文字の形や周囲の文脈（単価×数量の並びなど）から可能な限り推測して読み取ってください。" +
     "レシートには店舗名・住所・電話番号・レシート番号・日時・各商品名と価格・小計・消費税・合計・支払方法・お釣りなど" +
     "複数の行が含まれることがあります。店舗名・住所・電話番号・レシート番号・日時・小計・税額・合計・支払方法・お釣りの行は" +
-    "商品名として扱わず、実際に購入した食材・商品の行だけを対象にしてください。" +
-    "対象になる商品行が複数ある場合は、その中で最も価格の高い商品を1つ選び、その商品名と、支払った価格（円、整数。" +
-    "個別の商品価格であり小計・合計ではない）を読み取ってください。" +
+    "商品として扱わず、実際に購入した食材・商品の行だけをitemsに含めてください。" +
+    "写っている商品は（読み取れた範囲で）できるだけすべてitemsに含めてください。各商品についてname（商品名、日本語）と、" +
+    "price（支払った価格、円、整数。個別の商品価格であり小計・合計ではない）を読み取ってください。" +
     "可能であれば数量も読み取り、個数がわかる場合はunitを\"count\"にしてquantityに個数を、" +
     "グラム数がわかる場合はunitを\"gram\"にしてquantityにグラム数を入れてください。" +
     "数量が読み取れない場合はunitを\"none\"にしてください。" +
-    "商品名・価格のいずれも全く読み取れない場合に限り、ingredientNameを空文字、priceを0にしてください。" +
-    "必ず指定のJSONスキーマのみで、商品名は日本語で回答してください。";
+    "商品が1つも読み取れない場合はitemsを空配列にしてください。" +
+    "必ず指定のJSONスキーマのみで回答してください。";
 
   let text;
   try {
@@ -981,17 +990,36 @@ function handleScanReceipt(body) {
     return { error: "scan_failed" };
   }
 
-  const ingredientName = String(parsed.ingredientName || "").trim().slice(0, MAX_INGREDIENT_NAME_LEN);
-  const price = Number(parsed.price);
-  const unit = parsed.unit === "count" || parsed.unit === "gram" ? parsed.unit : "";
-  const quantity = Number(parsed.quantity);
+  const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
+  const items = rawItems.map((it) => {
+    const ingredientName = String((it && it.name) || "").trim().slice(0, MAX_INGREDIENT_NAME_LEN);
+    const price = Number(it && it.price);
+    const unit = it && (it.unit === "count" || it.unit === "gram") ? it.unit : "";
+    const quantity = Number(it && it.quantity);
+    return {
+      ingredientName: ingredientName,
+      price: Number.isFinite(price) && price >= 0 ? Math.round(price) : null,
+      unit: unit,
+      quantity: unit && Number.isFinite(quantity) && quantity > 0 ? quantity : null,
+    };
+  }).filter((it) => it.ingredientName || it.price != null);
+
+  if (!items.length) {
+    return { ok: true, items: [] };
+  }
+
+  // 価格の高い順に並べ、最も高い商品をフォーム自動入力の候補にする（他の商品はitemsとして
+  // まとめて返し、フロント側でコピー可能な一覧として表示する）
+  items.sort((a, b) => (b.price || 0) - (a.price || 0));
+  const top = items[0];
 
   return {
     ok: true,
-    ingredientName: ingredientName || null,
-    price: Number.isFinite(price) && price >= 0 ? Math.round(price) : null,
-    unit: unit,
-    quantity: unit && Number.isFinite(quantity) && quantity > 0 ? quantity : null,
+    items: items,
+    ingredientName: top.ingredientName || null,
+    price: top.price,
+    unit: top.unit,
+    quantity: top.quantity,
   };
 }
 

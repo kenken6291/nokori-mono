@@ -151,6 +151,7 @@
     $("purchaseCancelBtn").hidden = true;
     updateQuantityFieldVisibility();
     setFormError("");
+    hideScanResult();
   }
 
   async function startEditPurchase(purchaseId) {
@@ -215,9 +216,81 @@
     }
   }
 
+  /* ==========================================================
+     レシート読み取り結果のコピー用テキストエリア
+     ========================================================== */
+  function unitLabel(unit) {
+    if (unit === "count") return "個";
+    if (unit === "gram") return "g";
+    return "";
+  }
+
+  // 読み取った全商品をタブ区切り（TSV）に整形する。Excel/スプレッドシートへそのまま貼り付けられる。
+  function scanResultText(items) {
+    const header = "食材名\t価格(円)\t数量\t単位";
+    const rows = items.map((it) => {
+      const name = it.ingredientName || "";
+      const price = it.price != null ? it.price : "";
+      const qty = it.quantity != null ? it.quantity : "";
+      const unit = unitLabel(it.unit);
+      return `${name}\t${price}\t${qty}\t${unit}`;
+    });
+    return [header].concat(rows).join("\n");
+  }
+
+  function showScanResult(items) {
+    const field = $("purchaseScanResultField");
+    const textarea = $("purchaseScanResultText");
+    if (!field || !textarea) return;
+    if (!items || !items.length) {
+      hideScanResult();
+      return;
+    }
+    textarea.value = scanResultText(items);
+    field.hidden = false;
+  }
+
+  function hideScanResult() {
+    const field = $("purchaseScanResultField");
+    const textarea = $("purchaseScanResultText");
+    if (!field || !textarea) return;
+    field.hidden = true;
+    textarea.value = "";
+  }
+
+  async function onCopyScanResult() {
+    const textarea = $("purchaseScanResultText");
+    const btn = $("purchaseScanCopyBtn");
+    if (!textarea || !textarea.value) return;
+    let copied = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(textarea.value);
+        copied = true;
+      }
+    } catch (err) {
+      copied = false;
+    }
+    if (!copied) {
+      try {
+        textarea.select();
+        document.execCommand("copy");
+        copied = true;
+      } catch (err) {
+        copied = false;
+      }
+    }
+    if (btn) {
+      const original = btn.textContent;
+      btn.textContent = copied ? "コピーしました" : "コピーできませんでした";
+      setTimeout(() => { btn.textContent = original; }, 1800);
+    }
+  }
+
   // レシート・値札の写真（縮小前の元画像）から食材名・価格・数量をGemini Visionで自動抽出し、
   // フォームへ自動入力する。あくまで下書きの自動入力であり、登録自体はユーザーが内容を確認して
-  // 「記録する」を押すまで行われない。
+  // 「記録する」を押すまで行われない。読み取れた商品が複数ある場合は、コピー用テキストエリアに
+  // 全商品分をTSV形式で表示し、手入力が必要な商品もスプレッドシートへ貼り付けて扱えるようにする。
   async function scanReceiptAndFill(original, baseHint) {
     try {
       const data = await window.NokoriAuth.authedPost("scanReceipt", {
@@ -226,6 +299,13 @@
       });
       if (!data || data.error) {
         $("purchasePhotoHint").textContent = baseHint + "レシートの自動読み取りはできませんでした。内容を手入力してください。";
+        hideScanResult();
+        return;
+      }
+      const items = Array.isArray(data.items) ? data.items : [];
+      if (!items.length) {
+        $("purchasePhotoHint").textContent = baseHint + "レシートから商品を読み取れませんでした。内容を手入力してください。";
+        hideScanResult();
         return;
       }
       if (data.ingredientName) $("purchaseIngredient").value = data.ingredientName;
@@ -235,9 +315,14 @@
         updateQuantityFieldVisibility();
         if (data.quantity != null) $("purchaseQuantity").value = data.quantity;
       }
-      $("purchasePhotoHint").textContent = baseHint + "レシートから読み取りました。内容を確認してから「記録する」を押してください（読み取り精度は完全ではありません）。";
+      showScanResult(items);
+      const suffix = items.length > 1
+        ? `レシートから${items.length}件の商品を読み取りました。金額が最も大きい商品をフォームに自動入力しています。他の商品は下の一覧からコピーしてスプレッドシートに貼り付けられます。内容を確認してから「記録する」を押してください（読み取り精度は完全ではありません）。`
+        : "レシートから読み取りました。内容を確認してから「記録する」を押してください（読み取り精度は完全ではありません）。";
+      $("purchasePhotoHint").textContent = baseHint + suffix;
     } catch (err) {
       $("purchasePhotoHint").textContent = baseHint + "レシートの自動読み取りに失敗しました。内容を手入力してください。";
+      hideScanResult();
     }
   }
 
@@ -393,6 +478,7 @@
     $("purchasePhoto").addEventListener("change", onPhotoSelected);
     $("purchaseCancelBtn").addEventListener("click", resetPurchaseForm);
     $("costRecent").addEventListener("click", onRecentClick);
+    if ($("purchaseScanCopyBtn")) $("purchaseScanCopyBtn").addEventListener("click", onCopyScanResult);
     updateQuantityFieldVisibility();
 
     window.addEventListener("nokori-tab-shown", (e) => {
