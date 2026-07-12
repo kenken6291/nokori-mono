@@ -166,15 +166,44 @@
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     $("purchasePhotoHint").textContent = "写真を処理しています…";
+    let resized;
     try {
-      const resized = await resizePhoto(file);
+      resized = await resizePhoto(file);
       pendingPhoto = { base64: resized.base64, mimeType: resized.mimeType };
       $("purchasePhotoPreview").src = "data:" + resized.mimeType + ";base64," + resized.base64;
       $("purchasePhotoPreview").hidden = false;
-      $("purchasePhotoHint").textContent = `自動縮小しました（${resized.width}×${resized.height}px, 約${resized.approxKB}KB）`;
+      $("purchasePhotoHint").textContent = `自動縮小しました（${resized.width}×${resized.height}px, 約${resized.approxKB}KB）。レシートを読み取っています…`;
     } catch (err) {
       pendingPhoto = null;
       $("purchasePhotoHint").textContent = "写真の読み込みに失敗しました。別の写真をお試しください。";
+      return;
+    }
+    await scanReceiptAndFill(resized);
+  }
+
+  // レシート・値札の写真から食材名・価格・数量をGemini Visionで自動抽出し、フォームへ自動入力する。
+  // あくまで下書きの自動入力であり、登録自体はユーザーが内容を確認して「記録する」を押すまで行われない。
+  async function scanReceiptAndFill(resized) {
+    const baseHint = `自動縮小しました（${resized.width}×${resized.height}px, 約${resized.approxKB}KB）。`;
+    try {
+      const data = await window.NokoriAuth.authedPost("scanReceipt", {
+        imageBase64: resized.base64,
+        mimeType: resized.mimeType,
+      });
+      if (!data || data.error) {
+        $("purchasePhotoHint").textContent = baseHint + "レシートの自動読み取りはできませんでした。内容を手入力してください。";
+        return;
+      }
+      if (data.ingredientName) $("purchaseIngredient").value = data.ingredientName;
+      if (data.price != null) $("purchasePrice").value = data.price;
+      if (data.unit === "count" || data.unit === "gram") {
+        $("purchaseUnit").value = data.unit;
+        updateQuantityFieldVisibility();
+        if (data.quantity != null) $("purchaseQuantity").value = data.quantity;
+      }
+      $("purchasePhotoHint").textContent = baseHint + "レシートから読み取りました。内容を確認してから「記録する」を押してください（読み取り精度は完全ではありません）。";
+    } catch (err) {
+      $("purchasePhotoHint").textContent = baseHint + "レシートの自動読み取りに失敗しました。内容を手入力してください。";
     }
   }
 

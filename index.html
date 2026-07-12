@@ -792,7 +792,7 @@ footer.site a{ color:var(--ink-soft); }
      ========================================================== -->
 <section class="container tab-panel" data-tab-panel="costs" hidden>
   <h2>材料費</h2>
-  <p class="hint">買った食材と値段を記録すると、今週の合計や食材ごとの内訳、他の会員の平均価格（相場）が見られます。</p>
+  <p class="hint">買った食材と値段を記録すると、今週の合計や食材ごとの内訳、他の会員の平均価格（相場）が見られます。レシート・値札の写真をアップロードすると、食材名・価格・数量を自動で読み取って入力します（読み取り精度は完全ではないため、記録前に内容をご確認ください）。</p>
 
   <form id="purchaseForm" class="purchase-form" novalidate>
     <div class="field">
@@ -822,7 +822,7 @@ footer.site a{ color:var(--ink-soft); }
       <input type="date" id="purchaseDate">
     </div>
     <div class="field">
-      <label for="purchasePhoto">レシート・写真（任意）</label>
+      <label for="purchasePhoto">レシート・値札の写真（任意・自動読み取り）</label>
       <input type="file" id="purchasePhoto" accept="image/*">
       <img id="purchasePhotoPreview" class="photo-preview" hidden alt="プレビュー">
       <p class="hint" id="purchasePhotoHint"></p>

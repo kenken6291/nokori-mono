@@ -27,6 +27,8 @@
  *   写真任意）の追加・編集・削除（本人のみ、ソフトデリート）。mypurchasesは今週の合計・食材ごとの内訳・
  *   1個あたり/100gあたりの単価・全会員の平均価格（相場）を返す。写真はCommunityRecipesと同じ仕組み
  *   （action=photo, type=purchase）で本人のみ閲覧できる
+ * - scanreceipt : レシート・値札の写真をGemini Visionで解析し、食材名・価格・数量を自動抽出する
+ *   （js/costs.jsが写真選択時に自動で呼び出し、フォームへ自動入力する。登録自体はユーザーの最終確認後）
  *
  * ▼ 初回セットアップ（詳細は ../SETUP_GUIDE.md）
  * スクリプト プロパティに以下を設定:
@@ -148,6 +150,9 @@ function doPost(e) {
         break;
       case "vision":
         result = handleVision(body);
+        break;
+      case "scanreceipt":
+        result = handleScanReceipt(body);
         break;
       case "feedback":
         result = handleFeedback(body);
@@ -785,6 +790,17 @@ const VISION_SCHEMA = {
   required: ["ingredients"],
 };
 
+const RECEIPT_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    ingredientName: { type: "STRING" },
+    price: { type: "INTEGER" },
+    quantity: { type: "NUMBER" },
+    unit: { type: "STRING", enum: ["count", "gram", "none"] },
+  },
+  required: ["ingredientName", "price"],
+};
+
 // ---------- action=suggest（通常提案／あと1品モード）※要ログイン ----------
 function handleSuggest(body) {
   const auth = requireSession(body);
@@ -904,6 +920,71 @@ function handleVision(body) {
   });
 
   return { raw, matched };
+}
+
+// ---------- action=scanReceipt（レシート・値札の写真から食材名・価格・数量を自動読み取り）※要ログイン ----------
+// 材料費の記録フォームで写真を選択した際に、js/costs.jsから自動的に呼び出される。
+// 抽出結果はあくまで参考値としてフォームに自動入力するだけで、登録自体はユーザーが「記録する」を
+// 押すまで行われない（読み取り精度が完全ではないため、ユーザーの最終確認を必須にしている）。
+function handleScanReceipt(body) {
+  const auth = requireSession(body);
+  if (!auth.ok) return { error: auth.error };
+
+  const imageBase64 = String(body.imageBase64 || "");
+  const mimeType = String(body.mimeType || "image/jpeg");
+  if (!imageBase64) return { error: "imageBase64 required" };
+  if (imageBase64.length > 6 * 1024 * 1024) return { error: "image too large" };
+
+  if (!checkAndIncrementQuota("scanReceipt:" + auth.email, Math.min(getMaxDailyCalls(), 100))) {
+    return { error: "quota_exceeded" };
+  }
+
+  const prompt = "この画像はレシートまたは値札の写真です。購入した食材・商品の名前と、支払った価格（円、整数）を読み取ってください。" +
+    "複数の商品が写っている場合は、最も金額の大きい商品、または合計金額と代表的な商品名を選んでください。" +
+    "可能であれば数量も読み取り、個数がわかる場合はunitを\"count\"にしてquantityに個数を、" +
+    "グラム数がわかる場合はunitを\"gram\"にしてquantityにグラム数を入れてください。" +
+    "数量が読み取れない場合はunitを\"none\"にしてください。価格がまったく読み取れない場合はpriceを0にしてください。" +
+    "必ず指定のJSONスキーマのみで、商品名は日本語で回答してください。";
+
+  let text;
+  try {
+    text = callGemini({
+      contents: [{
+        role: "user",
+        parts: [
+          { text: prompt },
+          { inlineData: { mimeType, data: imageBase64 } },
+        ],
+      }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: RECEIPT_SCHEMA,
+        temperature: 0.1,
+      },
+    });
+  } catch (err) {
+    return { error: "scan_failed" };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    return { error: "scan_failed" };
+  }
+
+  const ingredientName = String(parsed.ingredientName || "").trim().slice(0, MAX_INGREDIENT_NAME_LEN);
+  const price = Number(parsed.price);
+  const unit = parsed.unit === "count" || parsed.unit === "gram" ? parsed.unit : "";
+  const quantity = Number(parsed.quantity);
+
+  return {
+    ok: true,
+    ingredientName: ingredientName || null,
+    price: Number.isFinite(price) && price >= 0 ? Math.round(price) : null,
+    unit: unit,
+    quantity: unit && Number.isFinite(quantity) && quantity > 0 ? quantity : null,
+  };
 }
 
 // ---------- action=feedback ※要ログイン ----------
